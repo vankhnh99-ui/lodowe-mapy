@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useState } from 'react';
 
-// Ikony (bez zmian)
+// --- IKONY (Bez zmian) ---
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -33,6 +33,7 @@ const dangerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+// --- KONTROLER MAPY ---
 function MapController({ setMapInstance }: { setMapInstance: any }) {
   const map = useMap();
   useEffect(() => {
@@ -42,31 +43,37 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
 }
 
 export default function MapComponent({ coords, measurements, setMapInstance, onDelete }: any) {
-  // Zamrożenie pozycji startowej (żeby mapa nie skakała przy każdym ruchu GPS)
+  // Zapamiętujemy pozycję startową RAZ, żeby mapa nie skakała przy każdym odświeżeniu GPS
   const [initialPosition] = useState(coords);
 
   return (
     <MapContainer 
       center={initialPosition} 
-      zoom={13} 
-      maxZoom={22} // <--- 1. Pozwalamy na bardzo duże zbliżenie w kontenerze
+      zoom={15}             // Startowy zoom
+      minZoom={5}           // Nie oddalaj za mocno
+      maxZoom={22}          // <--- POZWÓL NA BARDZO DUŻE ZBLIŻENIE
+      zoomSnap={0}          // <--- KLUCZOWE: Wyłącza skokowe przybliżanie (płynny zoom)
+      zoomDelta={0.1}       // <--- Precyzyjne przybliżanie przyciskiem
+      scrollWheelZoom={true}
+      touchZoom={true}
       style={{ height: '100%', width: '100%' }}
       className="z-0"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        maxNativeZoom={19} // <--- 2. Tu kończą się prawdziwe zdjęcia
-        maxZoom={22}       // <--- 3. Tu kończy się nasze "rozciąganie"
+        maxNativeZoom={18}  // <--- Tu kończą się prawdziwe zdjęcia z satelity
+        maxZoom={22}        // <--- Od 18 do 22 mapa będzie "rozciągać" obraz (cyfrowy zoom)
       />
       
       <MapController setMapInstance={setMapInstance} />
 
-      {/* Znacznik użytkownika (żywy GPS) */}
-      <Marker position={coords} icon={userIcon}>
+      {/* Ty (niebieska kropka) */}
+      <Marker position={coords} icon={userIcon} zIndexOffset={1000}>
         <Popup>To Ty (Lokalizacja GPS)</Popup>
       </Marker>
 
+      {/* Pomiary */}
       {measurements.map((m: any) => (
         <Marker 
           key={m.id} 
