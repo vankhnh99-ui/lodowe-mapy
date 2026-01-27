@@ -10,7 +10,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Mapa importowana dynamicznie
 const MapComponent = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
   loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">Ładowanie mapy...</div>
@@ -29,11 +28,9 @@ export default function Home() {
   const [isLocating, setIsLocating] = useState(false);
   const [isCheckingWater, setIsCheckingWater] = useState(false);
   
-  // NOWE STANY DLA ZDJĘĆ
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // FILTR CZASU
   const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
 
   useEffect(() => {
@@ -93,7 +90,6 @@ export default function Home() {
     }
   };
 
-  // --- FUNKCJA: SPRAWDZANIE CZY TO WODA ---
   const checkIfWater = async (lat: number, lng: number): Promise<boolean> => {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
@@ -103,17 +99,59 @@ export default function Home() {
       const isCategoryWater = waterTypes.includes(data.category);
       const isTypeWater = waterDetails.includes(data.type);
       const hasLakeInName = data.display_name && (data.display_name.toLowerCase().includes('jezioro') || data.display_name.toLowerCase().includes('zalew') || data.display_name.toLowerCase().includes('staw'));
-
       return isCategoryWater || isTypeWater || hasLakeInName;
     } catch (e) {
       return true; 
     }
   };
 
+  // --- NOWA FUNKCJA: KOMPRESJA ZDJĘĆ ---
+  const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1000; // Maksymalna szerokość zdjęcia (optymalna na telefon)
+        const scaleSize = MAX_WIDTH / img.width;
+        
+        // Jeśli zdjęcie jest mniejsze niż limit, nie zmieniaj go
+        if (scaleSize >= 1) {
+            resolve(file);
+            return;
+        }
+
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            reject(new Error('Błąd kompresji'));
+            return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Kompresja do JPEG jakość 0.7 (70%)
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const newFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            resolve(newFile);
+          } else {
+            reject(new Error('Błąd tworzenia pliku'));
+          }
+        }, 'image/jpeg', 0.7);
+      };
+      img.onerror = (error) => reject(error);
+    });
+  };
+  // -------------------------------------
+
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
-    // 1. ANTY-TROLL (GPS)
     if (!coords || !mapInstance) {
       alert("Włącz GPS, aby potwierdzić lokalizację.");
       return;
@@ -124,7 +162,6 @@ export default function Home() {
       return;
     }
 
-    // 2. WERYFIKACJA WODY
     setIsCheckingWater(true);
     const isWater = await checkIfWater(tempLocation.lat, tempLocation.lng);
     setIsCheckingWater(false);
@@ -136,34 +173,39 @@ export default function Home() {
 
     let imageUrl = null;
 
-    // 3. UPLOAD ZDJĘCIA (JEŚLI JEST)
     if (selectedFile) {
       setIsUploading(true);
-      const fileExt = selectedFile.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const { data, error: uploadError } = await supabase.storage
-        .from('photos')
-        .upload(fileName, selectedFile);
       
-      if (uploadError) {
-        alert("Błąd wysyłania zdjęcia: " + uploadError.message);
+      try {
+        // 1. Kompresujemy zdjęcie przed wysłaniem!
+        const compressedFile = await compressImage(selectedFile);
+        
+        const fileExt = 'jpg'; // Zawsze jpg po kompresji
+        const fileName = `${Date.now()}.${fileExt}`;
+        
+        const { data, error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(fileName, compressedFile); // Wysyłamy skompresowane
+        
+        if (uploadError) throw uploadError;
+        
+        const { data: publicUrlData } = supabase.storage.from('photos').getPublicUrl(fileName);
+        imageUrl = publicUrlData.publicUrl;
+
+      } catch (error: any) {
+        alert("Błąd zdjęcia: " + error.message);
         setIsUploading(false);
         return;
       }
-      
-      // Pobierz publiczny link
-      const { data: publicUrlData } = supabase.storage.from('photos').getPublicUrl(fileName);
-      imageUrl = publicUrlData.publicUrl;
       setIsUploading(false);
     }
 
-    // 4. ZAPIS DO BAZY
     const { error } = await supabase.from('measurements').insert([
       { 
         lat: tempLocation.lat, 
         lng: tempLocation.lng, 
         thickness: parseInt(thickness),
-        image_url: imageUrl // Zapisujemy link (może być null)
+        image_url: imageUrl
       },
     ]);
 
@@ -171,7 +213,7 @@ export default function Home() {
       setShowModal(false);
       setIsAiming(false);
       setThickness('');
-      setSelectedFile(null); // Czyścimy plik
+      setSelectedFile(null);
       fetchMeasurements();
       alert("Dodano pomiar!");
     } else {
@@ -268,7 +310,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* GPS */}
       {!showModal && (
         <button onClick={handleLocateMe} className="absolute bottom-36 right-6 z-[1000] bg-white p-4 rounded-full shadow-xl text-gray-700 active:scale-90">
           {isLocating ? <span className="animate-spin block font-bold">↻</span> : (
@@ -277,7 +318,6 @@ export default function Home() {
         </button>
       )}
 
-      {/* PRZYCISK GŁÓWNY */}
       {!showModal && (
         <button
           onClick={handleMainButtonClick}
