@@ -3,9 +3,9 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react'; // <--- Dodałem useState
 
-// Ikona użytkownika (Niebieska kropka)
+// Ikona użytkownika
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -15,7 +15,7 @@ const userIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Ikona bezpieczna (Zielona)
+// Ikona bezpieczna
 const safeIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -25,7 +25,7 @@ const safeIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Ikona niebezpieczna (Czerwona)
+// Ikona niebezpieczna
 const dangerIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -35,7 +35,6 @@ const dangerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Komponent do sterowania mapą z zewnątrz
 function MapController({ setMapInstance }: { setMapInstance: any }) {
   const map = useMap();
   useEffect(() => {
@@ -45,9 +44,14 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
 }
 
 export default function MapComponent({ coords, measurements, setMapInstance, onDelete }: any) {
+  // SZTUCZKA: Zapamiętujemy pozycję startową tylko RAZ przy wejściu.
+  // Dzięki temu, jak GPS zaktualizuje 'coords', to mapa nie zresetuje widoku/zooma,
+  // a jedynie przesunie niebieską kropkę.
+  const [initialPosition] = useState(coords);
+
   return (
     <MapContainer 
-      center={coords} 
+      center={initialPosition} // <-- Tu używamy tej zamrożonej pozycji
       zoom={13} 
       style={{ height: '100%', width: '100%' }}
       className="z-0"
@@ -59,12 +63,11 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       
       <MapController setMapInstance={setMapInstance} />
 
-      {/* Znacznik użytkownika */}
+      {/* Ale znacznik użytkownika dalej korzysta z 'żywego' coords, więc będzie się ruszał! */}
       <Marker position={coords} icon={userIcon}>
         <Popup>To Ty (Lokalizacja GPS)</Popup>
       </Marker>
 
-      {/* Znaczniki pomiarów */}
       {measurements.map((m: any) => (
         <Marker 
           key={m.id} 
@@ -80,7 +83,6 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
                 {new Date(m.created_at).toLocaleDateString()} {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
               </div>
 
-              {/* --- WYŚWIETLANIE ZDJĘCIA --- */}
               {m.image_url && (
                 <div className="mb-3">
                   <a href={m.image_url} target="_blank" rel="noopener noreferrer">
@@ -93,7 +95,6 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
                   <span className="text-[10px] text-blue-500 block mt-1">(Kliknij, aby powiększyć)</span>
                 </div>
               )}
-              {/* --------------------------- */}
 
               <button 
                 onClick={() => onDelete(m.id)}
