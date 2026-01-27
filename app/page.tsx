@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 
+// Konfiguracja Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Mapa importowana dynamicznie
 const MapComponent = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
   loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">Ładowanie mapy...</div>
@@ -26,11 +28,15 @@ export default function Home() {
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [isLocating, setIsLocating] = useState(false);
 
+  // NOWY STAN: Filtr czasu ('recent' = 3 dni, 'all' = wszystkie)
+  const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
+
   useEffect(() => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
+      navigator.geolocation.watchPosition(
         (position) => { setCoords([position.coords.latitude, position.coords.longitude]); },
-        () => { setCoords(DEFAULT_CENTER); }
+        () => { /* Błąd lub brak zgody - ignorujemy cicho */ },
+        { enableHighAccuracy: true }
       );
     } else {
       setCoords(DEFAULT_CENTER);
@@ -74,6 +80,7 @@ export default function Home() {
     if (!isAiming) {
       setIsAiming(true);
     } else {
+      // ZATWIERDŹ LOKALIZACJĘ
       if (mapInstance) {
         const center = mapInstance.getCenter();
         setTempLocation({ lat: center.lat, lng: center.lng });
@@ -84,6 +91,24 @@ export default function Home() {
 
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
+
+    // --- ZABEZPIECZENIE ANTY-TROLL (GPS) ---
+    if (!coords || !mapInstance) {
+      alert("Musimy znać Twoją lokalizację, żeby potwierdzić pomiar. Włącz GPS.");
+      return;
+    }
+
+    // Obliczamy dystans między telefonem (coords) a celownikiem (tempLocation)
+    // Używamy wbudowanej funkcji Leafleta: map.distance(latlng1, latlng2) zwraca metry
+    const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
+
+    // Limit: 100 metrów (bezpieczny margines na błąd GPS)
+    if (dist > 100) {
+      alert(`Jesteś za daleko! \n\nTwój celownik jest oddalony o ${Math.round(dist)}m od Ciebie. \n\nAby zapobiec oszustwom, musisz być w promieniu 100m od miejsca pomiaru.`);
+      return;
+    }
+    // ----------------------------------------
+
     const { error } = await supabase.from('measurements').insert([
       { lat: tempLocation.lat, lng: tempLocation.lng, thickness: parseInt(thickness) },
     ]);
@@ -92,23 +117,65 @@ export default function Home() {
       setIsAiming(false);
       setThickness('');
       fetchMeasurements();
+      alert("Dodano potwierdzony pomiar!");
     } else {
       alert('Błąd: ' + error.message);
     }
   };
 
-  if (!coords) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white">Startowanie...</div>;
+  // --- FILTROWANIE DANYCH ---
+  const filteredMeasurements = measurements.filter(m => {
+    if (filterMode === 'all') return true;
+    
+    // Logika "Ostatnie 3 dni"
+    const date = new Date(m.created_at);
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    return date >= threeDaysAgo;
+  });
+
+  if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white">Startowanie...</div>;
 
   return (
-    // ZMIANA: h-[100dvh] naprawia problem paska adresu w telefonach
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
+      
+      {/* MAPA (Przekazujemy przefiltrowane dane!) */}
       <MapComponent 
-        coords={coords} 
-        measurements={measurements} 
+        coords={coords || DEFAULT_CENTER} 
+        measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
         onDelete={handleDelete}
       />
 
+      {/* --- PANEL FILTRÓW (GÓRA EKRANU) --- */}
+      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-full shadow-lg flex text-sm font-bold border border-gray-200">
+        <button 
+          onClick={() => setFilterMode('recent')}
+          className={`px-4 py-2 rounded-full transition-all ${filterMode === 'recent' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          3 Dni
+        </button>
+        <button 
+          onClick={() => setFilterMode('all')}
+          className={`px-4 py-2 rounded-full transition-all ${filterMode === 'all' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
+        >
+          Wszystkie
+        </button>
+      </div>
+
+      {/* PRZYCISK WSPARCIA (Kawa) */}
+      <a
+        href="https://buycoffee.to/TwojaNazwa" 
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute top-20 left-4 z-[1000] bg-yellow-400 hover:bg-yellow-500 text-black font-bold p-3 rounded-full shadow-lg transition-transform hover:scale-110 flex items-center justify-center w-10 h-10"
+        title="Postaw kawę"
+      >
+        ☕
+      </a>
+
+      {/* CELOWNIK */}
       {isAiming && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[500] pointer-events-none drop-shadow-lg">
           <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="red" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -119,10 +186,12 @@ export default function Home() {
         </div>
       )}
 
+      {/* MODAL DODAWANIA */}
       {showModal && (
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
             <h2 className="text-xl font-bold mb-4 text-gray-800">Grubość lodu</h2>
+            <p className="text-xs text-gray-500 mb-4">Upewnij się, że jesteś w miejscu pomiaru.</p>
             <input 
               type="number" 
               value={thickness}
@@ -139,7 +208,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* GPS - ZMIANA POZYCJI (wyżej: bottom-36) */}
+      {/* PRZYCISK GPS */}
       {!showModal && (
         <button
           onClick={handleLocateMe}
@@ -157,7 +226,7 @@ export default function Home() {
         </button>
       )}
 
-      {/* GŁÓWNY PRZYCISK - ZMIANA POZYCJI (wyżej: bottom-12) */}
+      {/* GŁÓWNY PRZYCISK */}
       {!showModal && (
         <button
           onClick={handleMainButtonClick}
