@@ -51,16 +51,47 @@ export default function Home() {
     if (!error && data) setMeasurements(data);
   };
 
+  // --- POPRAWIONA FUNKCJA USUWANIA (SPRZĄTA TEŻ ZDJĘCIA) ---
   const handleDelete = async (id: number) => {
     const confirmDelete = window.confirm("Czy na pewno chcesz usunąć ten pomiar?");
     if (!confirmDelete) return;
+
+    // 1. Znajdź ten pomiar w pamięci, żeby sprawdzić czy ma zdjęcie
+    const measurementToDelete = measurements.find((m) => m.id === id);
+
+    // 2. Jeśli ma zdjęcie, usuń je z "wiadra" Storage
+    if (measurementToDelete && measurementToDelete.image_url) {
+      try {
+        // Wyciągamy samą nazwę pliku z długiego linku (to co jest po ostatnim ukośniku)
+        const fileName = measurementToDelete.image_url.split('/').pop();
+
+        if (fileName) {
+            const { error: storageError } = await supabase.storage
+              .from('photos')
+              .remove([fileName]);
+
+            if (storageError) {
+                console.error("Błąd usuwania pliku ze Storage:", storageError);
+            } else {
+                console.log("Zdjęcie usunięte ze Storage.");
+            }
+        }
+      } catch (err) {
+        console.error("Problem z usuwaniem zdjęcia:", err);
+      }
+    }
+
+    // 3. Usuń wpis z bazy danych (tak jak wcześniej)
     const { error } = await supabase.from('measurements').delete().eq('id', id);
+
     if (!error) {
       setMeasurements((prev) => prev.filter((m) => m.id !== id));
+      alert("Usunięto!");
     } else {
       alert("Błąd: " + error.message);
     }
   };
+  // ---------------------------------------------------------
 
   const handleLocateMe = () => {
     if (!mapInstance) return;
@@ -105,17 +136,15 @@ export default function Home() {
     }
   };
 
-  // --- NOWA FUNKCJA: KOMPRESJA ZDJĘĆ ---
   const compressImage = (file: File): Promise<File> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.src = URL.createObjectURL(file);
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1000; // Maksymalna szerokość zdjęcia (optymalna na telefon)
+        const MAX_WIDTH = 1000; 
         const scaleSize = MAX_WIDTH / img.width;
         
-        // Jeśli zdjęcie jest mniejsze niż limit, nie zmieniaj go
         if (scaleSize >= 1) {
             resolve(file);
             return;
@@ -131,7 +160,6 @@ export default function Home() {
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        // Kompresja do JPEG jakość 0.7 (70%)
         canvas.toBlob((blob) => {
           if (blob) {
             const newFile = new File([blob], file.name, {
@@ -147,7 +175,6 @@ export default function Home() {
       img.onerror = (error) => reject(error);
     });
   };
-  // -------------------------------------
 
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
@@ -177,15 +204,14 @@ export default function Home() {
       setIsUploading(true);
       
       try {
-        // 1. Kompresujemy zdjęcie przed wysłaniem!
         const compressedFile = await compressImage(selectedFile);
         
-        const fileExt = 'jpg'; // Zawsze jpg po kompresji
+        const fileExt = 'jpg'; 
         const fileName = `${Date.now()}.${fileExt}`;
         
         const { data, error: uploadError } = await supabase.storage
           .from('photos')
-          .upload(fileName, compressedFile); // Wysyłamy skompresowane
+          .upload(fileName, compressedFile);
         
         if (uploadError) throw uploadError;
         
