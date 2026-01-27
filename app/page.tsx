@@ -28,7 +28,7 @@ export default function Home() {
   const [mapInstance, setMapInstance] = useState<any>(null);
   const [isLocating, setIsLocating] = useState(false);
 
-  // NOWY STAN: Filtr czasu ('recent' = 3 dni, 'all' = wszystkie)
+  // FILTR CZASU ('recent' = 3 dni, 'all' = wszystkie)
   const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
 
   useEffect(() => {
@@ -98,11 +98,10 @@ export default function Home() {
       return;
     }
 
-    // Obliczamy dystans między telefonem (coords) a celownikiem (tempLocation)
-    // Używamy wbudowanej funkcji Leafleta: map.distance(latlng1, latlng2) zwraca metry
+    // Obliczamy dystans (w metrach)
     const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
 
-    // Limit: 100 metrów (bezpieczny margines na błąd GPS)
+    // Limit: 100 metrów
     if (dist > 100) {
       alert(`Jesteś za daleko! \n\nTwój celownik jest oddalony o ${Math.round(dist)}m od Ciebie. \n\nAby zapobiec oszustwom, musisz być w promieniu 100m od miejsca pomiaru.`);
       return;
@@ -140,7 +139,7 @@ export default function Home() {
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       
-      {/* MAPA (Przekazujemy przefiltrowane dane!) */}
+      {/* MAPA */}
       <MapComponent 
         coords={coords || DEFAULT_CENTER} 
         measurements={filteredMeasurements} 
@@ -163,17 +162,6 @@ export default function Home() {
           Wszystkie
         </button>
       </div>
-
-      {/* PRZYCISK WSPARCIA (Kawa) */}
-      <a
-        href="https://buycoffee.to/TwojaNazwa" 
-        target="_blank"
-        rel="noopener noreferrer"
-        className="absolute top-20 left-4 z-[1000] bg-yellow-400 hover:bg-yellow-500 text-black font-bold p-3 rounded-full shadow-lg transition-transform hover:scale-110 flex items-center justify-center w-10 h-10"
-        title="Postaw kawę"
-      >
-        ☕
-      </a>
 
       {/* CELOWNIK */}
       {isAiming && (
