@@ -3,9 +3,9 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { useEffect, useState } from 'react'; // <--- Dodałem useState
+import { useEffect, useState } from 'react';
 
-// Ikona użytkownika
+// Ikony (bez zmian)
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -15,7 +15,6 @@ const userIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Ikona bezpieczna
 const safeIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -25,7 +24,6 @@ const safeIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// Ikona niebezpieczna
 const dangerIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -44,26 +42,27 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
 }
 
 export default function MapComponent({ coords, measurements, setMapInstance, onDelete }: any) {
-  // SZTUCZKA: Zapamiętujemy pozycję startową tylko RAZ przy wejściu.
-  // Dzięki temu, jak GPS zaktualizuje 'coords', to mapa nie zresetuje widoku/zooma,
-  // a jedynie przesunie niebieską kropkę.
+  // Zamrożenie pozycji startowej (żeby mapa nie skakała przy każdym ruchu GPS)
   const [initialPosition] = useState(coords);
 
   return (
     <MapContainer 
-      center={initialPosition} // <-- Tu używamy tej zamrożonej pozycji
+      center={initialPosition} 
       zoom={13} 
+      maxZoom={22} // <--- 1. Pozwalamy na bardzo duże zbliżenie w kontenerze
       style={{ height: '100%', width: '100%' }}
       className="z-0"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        maxNativeZoom={19} // <--- 2. Tu kończą się prawdziwe zdjęcia
+        maxZoom={22}       // <--- 3. Tu kończy się nasze "rozciąganie"
       />
       
       <MapController setMapInstance={setMapInstance} />
 
-      {/* Ale znacznik użytkownika dalej korzysta z 'żywego' coords, więc będzie się ruszał! */}
+      {/* Znacznik użytkownika (żywy GPS) */}
       <Marker position={coords} icon={userIcon}>
         <Popup>To Ty (Lokalizacja GPS)</Popup>
       </Marker>
