@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lodowe Mapy",
-  description: "Aplikacja do mapowania lodów",
+  description: "Sprawdź grubość lodu i łów bezpiecznie.",
 };
 
 export default function RootLayout({
