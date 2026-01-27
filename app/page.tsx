@@ -51,37 +51,23 @@ export default function Home() {
     if (!error && data) setMeasurements(data);
   };
 
-  // --- POPRAWIONA FUNKCJA USUWANIA (SPRZĄTA TEŻ ZDJĘCIA) ---
   const handleDelete = async (id: number) => {
     const confirmDelete = window.confirm("Czy na pewno chcesz usunąć ten pomiar?");
     if (!confirmDelete) return;
 
-    // 1. Znajdź ten pomiar w pamięci, żeby sprawdzić czy ma zdjęcie
     const measurementToDelete = measurements.find((m) => m.id === id);
 
-    // 2. Jeśli ma zdjęcie, usuń je z "wiadra" Storage
     if (measurementToDelete && measurementToDelete.image_url) {
       try {
-        // Wyciągamy samą nazwę pliku z długiego linku (to co jest po ostatnim ukośniku)
         const fileName = measurementToDelete.image_url.split('/').pop();
-
         if (fileName) {
-            const { error: storageError } = await supabase.storage
-              .from('photos')
-              .remove([fileName]);
-
-            if (storageError) {
-                console.error("Błąd usuwania pliku ze Storage:", storageError);
-            } else {
-                console.log("Zdjęcie usunięte ze Storage.");
-            }
+            await supabase.storage.from('photos').remove([fileName]);
         }
       } catch (err) {
         console.error("Problem z usuwaniem zdjęcia:", err);
       }
     }
 
-    // 3. Usuń wpis z bazy danych (tak jak wcześniej)
     const { error } = await supabase.from('measurements').delete().eq('id', id);
 
     if (!error) {
@@ -91,7 +77,6 @@ export default function Home() {
       alert("Błąd: " + error.message);
     }
   };
-  // ---------------------------------------------------------
 
   const handleLocateMe = () => {
     if (!mapInstance) return;
@@ -176,6 +161,13 @@ export default function Home() {
     });
   };
 
+  // Obsługa wyboru pliku (wspólna dla obu przycisków)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+    }
+  };
+
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
@@ -202,14 +194,11 @@ export default function Home() {
 
     if (selectedFile) {
       setIsUploading(true);
-      
       try {
         const compressedFile = await compressImage(selectedFile);
-        
         const fileExt = 'jpg'; 
         const fileName = `${Date.now()}.${fileExt}`;
-        
-        const { data, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('photos')
           .upload(fileName, compressedFile);
         
@@ -266,13 +255,11 @@ export default function Home() {
         onDelete={handleDelete}
       />
 
-      {/* FILTRY */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-full shadow-lg flex text-sm font-bold border border-gray-200">
         <button onClick={() => setFilterMode('recent')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'recent' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>3 Dni</button>
         <button onClick={() => setFilterMode('all')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'all' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>Wszystkie</button>
       </div>
 
-      {/* CELOWNIK */}
       {isAiming && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[500] pointer-events-none drop-shadow-lg">
           <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="red" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -283,7 +270,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL */}
       {showModal && (
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
@@ -305,22 +291,39 @@ export default function Home() {
               disabled={isCheckingWater || isUploading}
             />
 
-            {/* INPUT NA ZDJĘCIE */}
-            <div className="mb-6">
-              <label className="block w-full p-3 bg-gray-100 rounded-xl text-center text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors border border-dashed border-gray-400">
-                {selectedFile ? `📸 Wybrano: ${selectedFile.name.slice(0, 15)}...` : '📷 Dodaj zdjęcie (opcjonalne)'}
+            {/* --- WYBÓR ZDJĘCIA: APARAT vs GALERIA --- */}
+            <div className="mb-6 flex gap-2">
+              {/* Przycisk: APARAT */}
+              <label className="flex-1 p-3 bg-blue-100 rounded-xl text-center text-blue-700 font-bold cursor-pointer hover:bg-blue-200 transition-colors flex flex-col items-center justify-center gap-1">
+                <span>📸 Aparat</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment" // <--- TO OTWIERA APARAT OD RAZU
+                  className="hidden" 
+                  onChange={handleFileSelect} 
+                />
+              </label>
+              
+              {/* Przycisk: GALERIA */}
+              <label className="flex-1 p-3 bg-gray-100 rounded-xl text-center text-gray-700 font-bold cursor-pointer hover:bg-gray-200 transition-colors flex flex-col items-center justify-center gap-1">
+                <span>📁 Galeria</span>
                 <input 
                   type="file" 
                   accept="image/*" 
                   className="hidden" 
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setSelectedFile(e.target.files[0]);
-                    }
-                  }} 
+                  onChange={handleFileSelect} 
                 />
               </label>
             </div>
+            
+            {/* Podgląd nazwy pliku */}
+            {selectedFile && (
+              <div className="mb-4 text-center text-sm text-green-600 font-semibold bg-green-50 py-2 rounded-lg">
+                Wybrano: {selectedFile.name.length > 20 ? selectedFile.name.slice(0, 15) + '...' : selectedFile.name}
+              </div>
+            )}
+            {/* ------------------------------------------ */}
 
             <div className="flex gap-3 justify-end">
               <button onClick={() => setShowModal(false)} className="flex-1 py-4 text-gray-600 font-bold bg-gray-100 rounded-xl">Anuluj</button>
