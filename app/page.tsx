@@ -4,7 +4,89 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 
-// Konfiguracja Supabase
+const TRANSLATIONS = {
+  pl: {
+    loading: "Ładowanie mapy...",
+    searchingSatellites: "Szukam satelitów...",
+    addIce: "+ DODAJ LÓD",
+    confirmHere: "ZATWIERDŹ TU",
+    locateMe: "Lokalizuj mnie",
+    filters: { recent: "3 Dni", all: "Wszystkie" },
+    modal: {
+      title: "Grubość lodu",
+      checkingWater: "Sprawdzam, czy to woda... 🌊",
+      checkLocation: "Upewnij się, że jesteś w miejscu pomiaru.",
+      camera: "📸 Aparat",
+      gallery: "📁 Galeria",
+      fileSelected: "Wybrano:",
+      cancel: "Anuluj",
+      save: "Zapisz",
+      uploading: "Wysyłanie...",
+      checking: "Sprawdzanie...",
+    },
+    alerts: {
+      gpsError: "Błąd GPS:",
+      deleteConfirm: "Czy na pewno chcesz usunąć ten pomiar?",
+      deleted: "Usunięto!",
+      dbError: "Błąd bazy:",
+      locateError: "Nie udało się pobrać lokalizacji. Sprawdź ustawienia GPS.",
+      browserNoGps: "Twoja przeglądarka nie obsługuje GPS.",
+      fbBlock: "⚠️ Facebook blokuje GPS.\n\nKliknij 3 kropki w prawym górnym rogu i wybierz 'Otwórz w przeglądarce' (Chrome/Safari), aby mapa działała poprawnie.",
+      fbBlockShort: "⚠️ Facebook blokuje GPS.\nOtwórz mapę w normalnej przeglądarce (Chrome/Safari), aby zapisać dokładną pozycję.",
+      tooFar: "Jesteś za daleko. Musisz być przy miejscu pomiaru.",
+      landWarning: "Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?",
+      photoError: "Błąd zdjęcia:",
+      added: "Dodano pomiar!",
+    },
+    map: {
+      youAreHere: "To Ty (GPS)",
+      delete: "Usuń ten pomiar",
+      clickToZoom: "(Kliknij, aby powiększyć)"
+    }
+  },
+  en: {
+    loading: "Loading map...",
+    searchingSatellites: "Searching for satellites...",
+    addIce: "+ ADD ICE",
+    confirmHere: "CONFIRM HERE",
+    locateMe: "Locate me",
+    filters: { recent: "3 Days", all: "All" },
+    modal: {
+      title: "Ice Thickness",
+      checkingWater: "Checking if water... 🌊",
+      checkLocation: "Make sure you are at the measuring spot.",
+      camera: "📸 Camera",
+      gallery: "📁 Gallery",
+      fileSelected: "Selected:",
+      cancel: "Cancel",
+      save: "Save",
+      uploading: "Uploading...",
+      checking: "Checking...",
+    },
+    alerts: {
+      gpsError: "GPS Error:",
+      deleteConfirm: "Are you sure you want to delete this measurement?",
+      deleted: "Deleted!",
+      dbError: "Database error:",
+      locateError: "Could not get location. Check GPS settings.",
+      browserNoGps: "Your browser does not support GPS.",
+      fbBlock: "⚠️ Facebook blocks GPS.\n\nClick the 3 dots in the corner and select 'Open in Browser' (Chrome/Safari) for the map to work.",
+      fbBlockShort: "⚠️ Facebook blocks GPS.\nOpen the map in a regular browser (Chrome/Safari) to save accurate location.",
+      tooFar: "You are too far away. You must be at the measuring spot.",
+      landWarning: "Map says this is land. Are you sure you are on water?",
+      photoError: "Photo error:",
+      added: "Measurement added!",
+    },
+    map: {
+      youAreHere: "You (GPS)",
+      delete: "Delete this point",
+      clickToZoom: "(Click to zoom)"
+    }
+  }
+};
+
+type Lang = 'pl' | 'en';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -12,12 +94,15 @@ const supabase = createClient(
 
 const MapComponent = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
-  loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">Ładowanie mapy...</div>
+  loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">...</div>
 });
 
 const DEFAULT_CENTER = [53.757, 21.735] as [number, number];
 
 export default function Home() {
+  const [lang, setLang] = useState<Lang>('pl'); 
+  const t = TRANSLATIONS[lang]; 
+
   const [coords, setCoords] = useState<[number, number] | null>(null);
   const [measurements, setMeasurements] = useState<any[]>([]);
   const [isAiming, setIsAiming] = useState(false);
@@ -34,37 +119,31 @@ export default function Home() {
   const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
 
   useEffect(() => {
-    // 1. Próba pobrania GPS przy starcie
+    const userLang = navigator.language || navigator.languages[0];
+    if (userLang && !userLang.startsWith('pl')) {
+      setLang('en');
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
-        (position) => { 
-            setCoords([position.coords.latitude, position.coords.longitude]); 
-        },
-        (error) => { 
-            console.warn("Błąd GPS:", error);
-            // Jeśli błąd, po prostu ustawiamy domyślne, nie krzyczymy od razu
-            setCoords((prev) => prev || DEFAULT_CENTER); 
-        },
+        (position) => { setCoords([position.coords.latitude, position.coords.longitude]); },
+        (error) => { setCoords((prev) => prev || DEFAULT_CENTER); },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
       setCoords(DEFAULT_CENTER);
     }
 
-    // 2. TIMEOUT (Anty-Facebook)
-    // Jeśli po 2 sek dalej nie ma pozycji, ładujemy mapę domyślną
     const timer = setTimeout(() => {
         setCoords((prev) => {
-            if (!prev) {
-                return DEFAULT_CENTER;
-            }
+            if (!prev) return DEFAULT_CENTER;
             return prev;
         });
     }, 2000);
 
     fetchMeasurements();
     return () => clearTimeout(timer);
-  }, []);
+  }, []); 
 
   const fetchMeasurements = async () => {
     const { data, error } = await supabase.from('measurements').select('*');
@@ -72,7 +151,7 @@ export default function Home() {
   };
 
   const handleDelete = async (id: number) => {
-    const confirmDelete = window.confirm("Czy na pewno chcesz usunąć ten pomiar?");
+    const confirmDelete = window.confirm(TRANSLATIONS[lang].alerts.deleteConfirm);
     if (!confirmDelete) return;
 
     const measurementToDelete = measurements.find((m) => m.id === id);
@@ -86,13 +165,12 @@ export default function Home() {
     const { error } = await supabase.from('measurements').delete().eq('id', id);
     if (!error) {
       setMeasurements((prev) => prev.filter((m) => m.id !== id));
-      alert("Usunięto!");
+      alert(TRANSLATIONS[lang].alerts.deleted);
     } else {
-      alert("Błąd: " + error.message);
+      alert(TRANSLATIONS[lang].alerts.dbError + " " + error.message);
     }
   };
 
-  // --- NOWA, LEPSZA FUNKCJA LOKALIZACJI ---
   const handleLocateMe = () => {
     if (!mapInstance) return;
     setIsLocating(true);
@@ -102,19 +180,14 @@ export default function Home() {
           mapInstance.flyTo([position.coords.latitude, position.coords.longitude], 15, { animate: true, duration: 1.5 });
           setIsLocating(false);
         },
-        () => { 
-            // TU JEST ZMIANA KOMUNIKATU:
-            alert("⚠️ Facebook blokuje GPS.\n\nKliknij 3 kropki w prawym górnym rogu i wybierz 'Otwórz w przeglądarce' (Chrome/Safari), aby mapa działała poprawnie."); 
-            setIsLocating(false); 
-        },
+        () => { alert(TRANSLATIONS[lang].alerts.fbBlock); setIsLocating(false); },
         { timeout: 5000 }
       );
     } else {
-      alert("Twoja przeglądarka nie obsługuje GPS.");
+      alert(TRANSLATIONS[lang].alerts.browserNoGps);
       setIsLocating(false);
     }
   };
-  // ----------------------------------------
 
   const handleMainButtonClick = () => {
     if (!isAiming) {
@@ -138,9 +211,7 @@ export default function Home() {
       const isTypeWater = waterDetails.includes(data.type);
       const hasLakeInName = data.display_name && (data.display_name.toLowerCase().includes('jezioro') || data.display_name.toLowerCase().includes('zalew') || data.display_name.toLowerCase().includes('staw'));
       return isCategoryWater || isTypeWater || hasLakeInName;
-    } catch (e) {
-      return true; 
-    }
+    } catch (e) { return true; }
   };
 
   const compressImage = (file: File): Promise<File> => {
@@ -179,13 +250,13 @@ export default function Home() {
          if (navigator.geolocation) {
              navigator.geolocation.getCurrentPosition(
                  (pos) => setCoords([pos.coords.latitude, pos.coords.longitude]),
-                 () => alert("⚠️ Facebook blokuje GPS.\nOtwórz mapę w normalnej przeglądarce (Chrome/Safari), aby zapisać dokładną pozycję.")
+                 () => alert(TRANSLATIONS[lang].alerts.fbBlockShort)
              );
          }
     } else if (mapInstance) {
         const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
         if (dist > 100) {
-            alert(`Jesteś za daleko (${Math.round(dist)}m). Musisz być przy miejscu pomiaru.`);
+            alert(`${TRANSLATIONS[lang].alerts.tooFar} (${Math.round(dist)}m).`);
             return;
         }
     }
@@ -195,12 +266,11 @@ export default function Home() {
     setIsCheckingWater(false);
 
     if (!isWater) {
-      const forceAdd = window.confirm("Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?");
+      const forceAdd = window.confirm(TRANSLATIONS[lang].alerts.landWarning);
       if (!forceAdd) return;
     }
 
     let imageUrl = null;
-
     if (selectedFile) {
       setIsUploading(true);
       try {
@@ -211,7 +281,7 @@ export default function Home() {
         const { data: publicUrlData } = supabase.storage.from('photos').getPublicUrl(fileName);
         imageUrl = publicUrlData.publicUrl;
       } catch (error: any) {
-        alert("Błąd zdjęcia: " + error.message);
+        alert(TRANSLATIONS[lang].alerts.photoError + " " + error.message);
         setIsUploading(false);
         return;
       }
@@ -219,7 +289,12 @@ export default function Home() {
     }
 
     const { error } = await supabase.from('measurements').insert([
-      { lat: tempLocation.lat, lng: tempLocation.lng, thickness: parseInt(thickness), image_url: imageUrl },
+      { 
+        lat: tempLocation.lat, 
+        lng: tempLocation.lng, 
+        thickness: parseInt(thickness), // <-- Bez przeliczania, czyste CM
+        image_url: imageUrl 
+      },
     ]);
 
     if (!error) {
@@ -228,9 +303,9 @@ export default function Home() {
       setThickness('');
       setSelectedFile(null);
       fetchMeasurements();
-      alert("Dodano pomiar!");
+      alert(TRANSLATIONS[lang].alerts.added);
     } else {
-      alert('Błąd bazy: ' + error.message);
+      alert(TRANSLATIONS[lang].alerts.dbError + " " + error.message);
     }
   };
 
@@ -244,21 +319,29 @@ export default function Home() {
 
   if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white flex-col gap-4">
     <div className="animate-spin text-4xl">❄️</div>
-    <p>Szukam satelitów...</p>
+    <p>{t.searchingSatellites}</p>
     </div>;
 
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
+      
+      {/* PRZEŁĄCZNIK JĘZYKA - TERAZ PO PRAWEJ STRONIE (right-4) */}
+      <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-lg flex text-xs font-bold border border-gray-200">
+        <button onClick={() => setLang('pl')} className={`px-2 py-1 rounded-md transition-all ${lang === 'pl' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>PL</button>
+        <button onClick={() => setLang('en')} className={`px-2 py-1 rounded-md transition-all ${lang === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>EN</button>
+      </div>
+
       <MapComponent 
         coords={coords || DEFAULT_CENTER} 
         measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
         onDelete={handleDelete}
+        dict={t.map}
       />
 
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-full shadow-lg flex text-sm font-bold border border-gray-200">
-        <button onClick={() => setFilterMode('recent')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'recent' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>3 Dni</button>
-        <button onClick={() => setFilterMode('all')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'all' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>Wszystkie</button>
+        <button onClick={() => setFilterMode('recent')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'recent' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>{t.filters.recent}</button>
+        <button onClick={() => setFilterMode('all')} className={`px-4 py-2 rounded-full transition-all ${filterMode === 'all' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>{t.filters.all}</button>
       </div>
 
       {isAiming && (
@@ -274,8 +357,8 @@ export default function Home() {
       {showModal && (
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
-            <h2 className="text-xl font-bold mb-4 text-gray-800">Grubość lodu</h2>
-            {isCheckingWater ? <p className="text-blue-600 font-bold mb-4 animate-pulse">Sprawdzam, czy to woda... 🌊</p> : <p className="text-xs text-gray-500 mb-4">Upewnij się, że jesteś w miejscu pomiaru.</p>}
+            <h2 className="text-xl font-bold mb-4 text-gray-800">{t.modal.title}</h2>
+            {isCheckingWater ? <p className="text-blue-600 font-bold mb-4 animate-pulse">{t.modal.checkingWater}</p> : <p className="text-xs text-gray-500 mb-4">{t.modal.checkLocation}</p>}
             
             <input 
               type="number" 
@@ -289,29 +372,29 @@ export default function Home() {
 
             <div className="mb-6 flex gap-2">
               <label className="flex-1 p-3 bg-blue-100 rounded-xl text-center text-blue-700 font-bold cursor-pointer hover:bg-blue-200 transition-colors flex flex-col items-center justify-center gap-1">
-                <span>📸 Aparat</span>
+                <span>{t.modal.camera}</span>
                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
               </label>
               <label className="flex-1 p-3 bg-gray-100 rounded-xl text-center text-gray-700 font-bold cursor-pointer hover:bg-gray-200 transition-colors flex flex-col items-center justify-center gap-1">
-                <span>📁 Galeria</span>
+                <span>{t.modal.gallery}</span>
                 <input type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
               </label>
             </div>
             
             {selectedFile && (
               <div className="mb-4 text-center text-sm text-green-600 font-semibold bg-green-50 py-2 rounded-lg">
-                Wybrano: {selectedFile.name.length > 20 ? selectedFile.name.slice(0, 15) + '...' : selectedFile.name}
+                {t.modal.fileSelected} {selectedFile.name.length > 20 ? selectedFile.name.slice(0, 15) + '...' : selectedFile.name}
               </div>
             )}
 
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-4 text-gray-600 font-bold bg-gray-100 rounded-xl">Anuluj</button>
+              <button onClick={() => setShowModal(false)} className="flex-1 py-4 text-gray-600 font-bold bg-gray-100 rounded-xl">{t.modal.cancel}</button>
               <button 
                 onClick={saveMeasurement} 
                 disabled={isCheckingWater || isUploading}
                 className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md disabled:bg-gray-400"
               >
-                {isUploading ? 'Wysyłanie...' : (isCheckingWater ? 'Sprawdzanie...' : 'Zapisz')}
+                {isUploading ? t.modal.uploading : (isCheckingWater ? t.modal.checking : t.modal.save)}
               </button>
             </div>
           </div>
@@ -331,7 +414,7 @@ export default function Home() {
           onClick={handleMainButtonClick}
           className={`absolute bottom-12 right-6 z-[1000] rounded-2xl px-6 py-4 shadow-xl text-white font-bold text-lg tracking-wide active:scale-95 ${isAiming ? 'bg-green-600' : 'bg-blue-600'}`}
         >
-          {isAiming ? 'ZATWIERDŹ TU' : '+ DODAJ LÓD'}
+          {isAiming ? t.confirmHere : t.addIce}
         </button>
       )}
     </div>

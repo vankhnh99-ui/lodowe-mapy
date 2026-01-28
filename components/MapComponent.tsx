@@ -5,7 +5,6 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useState } from 'react';
 
-// --- IKONY (Bez zmian) ---
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -33,7 +32,6 @@ const dangerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// --- KONTROLER MAPY ---
 function MapController({ setMapInstance }: { setMapInstance: any }) {
   const map = useMap();
   useEffect(() => {
@@ -42,18 +40,17 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
   return null;
 }
 
-export default function MapComponent({ coords, measurements, setMapInstance, onDelete }: any) {
-  // Zapamiętujemy pozycję startową RAZ, żeby mapa nie skakała przy każdym odświeżeniu GPS
+export default function MapComponent({ coords, measurements, setMapInstance, onDelete, dict }: any) {
   const [initialPosition] = useState(coords);
 
   return (
     <MapContainer 
       center={initialPosition} 
-      zoom={15}             // Startowy zoom
-      minZoom={5}           // Nie oddalaj za mocno
-      maxZoom={22}          // <--- POZWÓL NA BARDZO DUŻE ZBLIŻENIE
-      zoomSnap={0}          // <--- KLUCZOWE: Wyłącza skokowe przybliżanie (płynny zoom)
-      zoomDelta={0.1}       // <--- Precyzyjne przybliżanie przyciskiem
+      zoom={15}             
+      minZoom={5}           
+      maxZoom={22}          
+      zoomSnap={0}          
+      zoomDelta={0.1}       
       scrollWheelZoom={true}
       touchZoom={true}
       style={{ height: '100%', width: '100%' }}
@@ -62,18 +59,16 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       <TileLayer
         attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        maxNativeZoom={18}  // <--- Tu kończą się prawdziwe zdjęcia z satelity
-        maxZoom={22}        // <--- Od 18 do 22 mapa będzie "rozciągać" obraz (cyfrowy zoom)
+        maxNativeZoom={18}  
+        maxZoom={22}        
       />
       
       <MapController setMapInstance={setMapInstance} />
 
-      {/* Ty (niebieska kropka) */}
       <Marker position={coords} icon={userIcon} zIndexOffset={1000}>
-        <Popup>To Ty (Lokalizacja GPS)</Popup>
+        <Popup>{dict.youAreHere}</Popup>
       </Marker>
 
-      {/* Pomiary */}
       {measurements.map((m: any) => (
         <Marker 
           key={m.id} 
@@ -98,7 +93,7 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
                       className="w-full h-32 object-cover rounded-lg border border-gray-300 hover:opacity-90 transition-opacity" 
                     />
                   </a>
-                  <span className="text-[10px] text-blue-500 block mt-1">(Kliknij, aby powiększyć)</span>
+                  <span className="text-[10px] text-blue-500 block mt-1">{dict.clickToZoom}</span>
                 </div>
               )}
 
@@ -106,7 +101,7 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
                 onClick={() => onDelete(m.id)}
                 className="text-red-500 text-xs underline mt-1 hover:text-red-700"
               >
-                Usuń ten pomiar
+                {dict.delete}
               </button>
             </div>
           </Popup>
