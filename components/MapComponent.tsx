@@ -56,11 +56,19 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       style={{ height: '100%', width: '100%' }}
       className="z-0"
     >
+      {/* WARSTWA 1: ZDJĘCIA SATELITARNE (Spód) */}
       <TileLayer
         attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
         maxNativeZoom={18}  
         maxZoom={22}        
+      />
+
+      {/* WARSTWA 2: NAPISY I GRANICE (Góra) */}
+      <TileLayer
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+        maxNativeZoom={18}
+        maxZoom={22}
       />
       
       <MapController setMapInstance={setMapInstance} />
