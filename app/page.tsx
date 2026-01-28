@@ -4,66 +4,67 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { createClient } from '@supabase/supabase-js';
 
+// Konfiguracja Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// Ładujemy mapę bez SSR
 const MapComponent = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full flex items-center justify-center bg-gray-900 text-white">Ładowanie mapy...</div>
+  loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">Ładowanie mapy...</div>
 });
 
 const DEFAULT_CENTER = [53.757, 21.735] as [number, number];
 
 export default function Home() {
-  // ZMIANA 1: coords ma WARTOŚĆ STARTOWĄ. Nie jest null. Dzięki temu mapa renderuje się od razu.
-  const [coords, setCoords] = useState<[number, number]>(DEFAULT_CENTER);
-  const [userGlobalPosition, setUserGlobalPosition] = useState<[number, number] | null>(null); // Nowy stan: prawdziwa pozycja gracza
-
+  const [coords, setCoords] = useState<[number, number] | null>(null);
   const [measurements, setMeasurements] = useState<any[]>([]);
   const [isAiming, setIsAiming] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [thickness, setThickness] = useState('');
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null);
   const [mapInstance, setMapInstance] = useState<any>(null);
-  
-  // ZMIANA 2: isLocating true na start, żeby kręciło się kółeczko GPS
-  const [isLocating, setIsLocating] = useState(true);
+  const [isLocating, setIsLocating] = useState(false);
   const [isCheckingWater, setIsCheckingWater] = useState(false);
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
   const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
 
   useEffect(() => {
-    // Pobierz pomiary od razu
-    fetchMeasurements();
-
-    // Próba pobrania GPS w tle
+    // 1. Próba pobrania GPS przy starcie
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const newPos = [position.coords.latitude, position.coords.longitude] as [number, number];
-          setCoords(newPos); // Przesuń mapę
-          setUserGlobalPosition(newPos); // Ustaw niebieską kropkę
-          setIsLocating(false); // Wyłącz kręcenie
-          
-          // Jeśli mapa już jest załadowana, zrób płynny przelot
-          if (mapInstance) {
-             mapInstance.flyTo(newPos, 15);
-          }
+      navigator.geolocation.watchPosition(
+        (position) => { 
+            setCoords([position.coords.latitude, position.coords.longitude]); 
         },
-        (error) => {
-          console.warn("Brak GPS:", error);
-          setIsLocating(false); // Przestań kręcić, zostań na Mazurach
+        (error) => { 
+            console.warn("Błąd GPS:", error);
+            // Jeśli błąd, po prostu ustawiamy domyślne, nie krzyczymy od razu
+            setCoords((prev) => prev || DEFAULT_CENTER); 
         },
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
-      setIsLocating(false);
+      setCoords(DEFAULT_CENTER);
     }
-  }, [mapInstance]); // Dodajemy mapInstance do zależności, żeby flyTo zadziałało jak mapa wstanie
+
+    // 2. TIMEOUT (Anty-Facebook)
+    // Jeśli po 2 sek dalej nie ma pozycji, ładujemy mapę domyślną
+    const timer = setTimeout(() => {
+        setCoords((prev) => {
+            if (!prev) {
+                return DEFAULT_CENTER;
+            }
+            return prev;
+        });
+    }, 2000);
+
+    fetchMeasurements();
+    return () => clearTimeout(timer);
+  }, []);
 
   const fetchMeasurements = async () => {
     const { data, error } = await supabase.from('measurements').select('*');
@@ -91,27 +92,29 @@ export default function Home() {
     }
   };
 
+  // --- NOWA, LEPSZA FUNKCJA LOKALIZACJI ---
   const handleLocateMe = () => {
+    if (!mapInstance) return;
     setIsLocating(true);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const newPos = [position.coords.latitude, position.coords.longitude] as [number, number];
-          setUserGlobalPosition(newPos);
-          if (mapInstance) mapInstance.flyTo(newPos, 15);
+          mapInstance.flyTo([position.coords.latitude, position.coords.longitude], 15, { animate: true, duration: 1.5 });
           setIsLocating(false);
         },
         () => { 
-            alert("Nie udało się pobrać lokalizacji."); 
+            // TU JEST ZMIANA KOMUNIKATU:
+            alert("⚠️ Facebook blokuje GPS.\n\nKliknij 3 kropki w prawym górnym rogu i wybierz 'Otwórz w przeglądarce' (Chrome/Safari), aby mapa działała poprawnie."); 
             setIsLocating(false); 
         },
         { timeout: 5000 }
       );
     } else {
-      alert("Brak modułu GPS.");
+      alert("Twoja przeglądarka nie obsługuje GPS.");
       setIsLocating(false);
     }
   };
+  // ----------------------------------------
 
   const handleMainButtonClick = () => {
     if (!isAiming) {
@@ -135,7 +138,9 @@ export default function Home() {
       const isTypeWater = waterDetails.includes(data.type);
       const hasLakeInName = data.display_name && (data.display_name.toLowerCase().includes('jezioro') || data.display_name.toLowerCase().includes('zalew') || data.display_name.toLowerCase().includes('staw'));
       return isCategoryWater || isTypeWater || hasLakeInName;
-    } catch (e) { return true; }
+    } catch (e) {
+      return true; 
+    }
   };
 
   const compressImage = (file: File): Promise<File> => {
@@ -153,8 +158,10 @@ export default function Home() {
         if (!ctx) { reject(new Error('Błąd kompresji')); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((blob) => {
-          if (blob) resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
-          else reject(new Error('Błąd pliku'));
+          if (blob) {
+            const newFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
+            resolve(newFile);
+          } else { reject(new Error('Błąd tworzenia pliku')); }
         }, 'image/jpeg', 0.7);
       };
       img.onerror = (error) => reject(error);
@@ -168,16 +175,17 @@ export default function Home() {
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
-    // Walidacja GPS przy zapisie (nie blokujemy startu, ale blokujemy zapis bez GPS)
-    if (!userGlobalPosition && !mapInstance) {
-        alert("Musisz włączyć GPS, aby dodać punkt!");
-        return;
-    }
-
-    if (userGlobalPosition && mapInstance) {
-        const dist = mapInstance.distance([userGlobalPosition[0], userGlobalPosition[1]], [tempLocation.lat, tempLocation.lng]);
-        if (dist > 200) { // Zwiększyłem tolerancję do 200m dla Facebooka
-            alert(`Jesteś za daleko (${Math.round(dist)}m).`);
+    if (!coords) {
+         if (navigator.geolocation) {
+             navigator.geolocation.getCurrentPosition(
+                 (pos) => setCoords([pos.coords.latitude, pos.coords.longitude]),
+                 () => alert("⚠️ Facebook blokuje GPS.\nOtwórz mapę w normalnej przeglądarce (Chrome/Safari), aby zapisać dokładną pozycję.")
+             );
+         }
+    } else if (mapInstance) {
+        const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
+        if (dist > 100) {
+            alert(`Jesteś za daleko (${Math.round(dist)}m). Musisz być przy miejscu pomiaru.`);
             return;
         }
     }
@@ -187,10 +195,12 @@ export default function Home() {
     setIsCheckingWater(false);
 
     if (!isWater) {
-      if(!window.confirm("Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?")) return;
+      const forceAdd = window.confirm("Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?");
+      if (!forceAdd) return;
     }
 
     let imageUrl = null;
+
     if (selectedFile) {
       setIsUploading(true);
       try {
@@ -198,8 +208,8 @@ export default function Home() {
         const fileName = `${Date.now()}.jpg`;
         const { error: uploadError } = await supabase.storage.from('photos').upload(fileName, compressedFile);
         if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from('photos').getPublicUrl(fileName);
-        imageUrl = data.publicUrl;
+        const { data: publicUrlData } = supabase.storage.from('photos').getPublicUrl(fileName);
+        imageUrl = publicUrlData.publicUrl;
       } catch (error: any) {
         alert("Błąd zdjęcia: " + error.message);
         setIsUploading(false);
@@ -232,12 +242,15 @@ export default function Home() {
     return date >= threeDaysAgo;
   });
 
-  // ZMIANA KLUCZOWA: Usunęliśmy warunek "if (!coords) return ...".
-  // Teraz zawsze renderujemy strukturę strony.
+  if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white flex-col gap-4">
+    <div className="animate-spin text-4xl">❄️</div>
+    <p>Szukam satelitów...</p>
+    </div>;
+
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       <MapComponent 
-        coords={coords} // To teraz zawsze ma wartość (Usera albo Mazury)
+        coords={coords || DEFAULT_CENTER} 
         measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
         onDelete={handleDelete}
@@ -262,12 +275,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
             <h2 className="text-xl font-bold mb-4 text-gray-800">Grubość lodu</h2>
-            
-            {isCheckingWater ? (
-              <p className="text-blue-600 font-bold mb-4 animate-pulse">Sprawdzam, czy to woda... 🌊</p>
-            ) : (
-              <p className="text-xs text-gray-500 mb-4">Upewnij się, że jesteś w miejscu pomiaru.</p>
-            )}
+            {isCheckingWater ? <p className="text-blue-600 font-bold mb-4 animate-pulse">Sprawdzam, czy to woda... 🌊</p> : <p className="text-xs text-gray-500 mb-4">Upewnij się, że jesteś w miejscu pomiaru.</p>}
             
             <input 
               type="number" 
