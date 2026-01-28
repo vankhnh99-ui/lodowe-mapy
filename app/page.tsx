@@ -34,16 +34,40 @@ export default function Home() {
   const [filterMode, setFilterMode] = useState<'recent' | 'all'>('recent');
 
   useEffect(() => {
+    // 1. Próba pobrania GPS
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
-        (position) => { setCoords([position.coords.latitude, position.coords.longitude]); },
-        () => { /* Cichy błąd GPS */ },
-        { enableHighAccuracy: true }
+        (position) => { 
+            // Udało się! Mamy GPS
+            setCoords([position.coords.latitude, position.coords.longitude]); 
+        },
+        (error) => { 
+            // Błąd GPS (np. użytkownik zablokował) -> Ustaw domyślne
+            console.warn("Błąd GPS:", error);
+            setCoords((prev) => prev || DEFAULT_CENTER); 
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
       setCoords(DEFAULT_CENTER);
     }
+
+    // 2. RATUNEK DLA FACEBOOKA (TIMEOUT)
+    // Jeśli po 2 sekundach dalej nie mamy współrzędnych (bo FB zawiesił pytanie o zgodę),
+    // to wymuszamy załadowanie mapy w domyślnej lokalizacji.
+    const timer = setTimeout(() => {
+        setCoords((prev) => {
+            if (!prev) {
+                console.log("Facebook timeout - wymuszam start mapy");
+                return DEFAULT_CENTER;
+            }
+            return prev;
+        });
+    }, 2000);
+
     fetchMeasurements();
+
+    return () => clearTimeout(timer); // Sprzątanie timera
   }, []);
 
   const fetchMeasurements = async () => {
@@ -87,9 +111,14 @@ export default function Home() {
           mapInstance.flyTo([position.coords.latitude, position.coords.longitude], 15, { animate: true, duration: 1.5 });
           setIsLocating(false);
         },
-        () => { alert("Błąd GPS."); setIsLocating(false); }
+        () => { 
+            alert("Nie udało się pobrać lokalizacji. Sprawdź ustawienia GPS."); 
+            setIsLocating(false); 
+        },
+        { timeout: 5000 }
       );
     } else {
+      alert("Twoja przeglądarka nie obsługuje GPS.");
       setIsLocating(false);
     }
   };
@@ -161,7 +190,6 @@ export default function Home() {
     });
   };
 
-  // Obsługa wyboru pliku (wspólna dla obu przycisków)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
@@ -171,14 +199,23 @@ export default function Home() {
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
-    if (!coords || !mapInstance) {
-      alert("Włącz GPS, aby potwierdzić lokalizację.");
-      return;
-    }
-    const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
-    if (dist > 100) {
-      alert(`Jesteś za daleko (${Math.round(dist)}m). Musisz być przy miejscu pomiaru.`);
-      return;
+    // --- POPRAWKA DLA FACEBOOKA: Jeśli coords jest null (bo timeout wymusił start),
+    // to nie blokujemy zapisu, ale ostrzegamy użytkownika.
+    if (!coords) {
+         // Próba ostatniej szansy na pobranie GPS przed zapisem
+         if (navigator.geolocation) {
+             navigator.geolocation.getCurrentPosition(
+                 (pos) => setCoords([pos.coords.latitude, pos.coords.longitude]),
+                 () => alert("Uwaga: Nie udało się potwierdzić Twojej lokalizacji GPS. Pomiar może być mniej dokładny.")
+             );
+         }
+    } else if (mapInstance) {
+        // Jeśli mamy GPS, robimy standardowe sprawdzenie dystansu
+        const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
+        if (dist > 100) {
+            alert(`Jesteś za daleko (${Math.round(dist)}m). Musisz być przy miejscu pomiaru.`);
+            return;
+        }
     }
 
     setIsCheckingWater(true);
@@ -244,7 +281,13 @@ export default function Home() {
     return date >= threeDaysAgo;
   });
 
-  if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white">Startowanie...</div>;
+  // --- ZMIANA: Zamiast return null, jeśli nie ma coords, wyświetlamy mapę jeśli coords JEST,
+  // lub jeśli minął timeout i ustawiliśmy DEFAULT_CENTER.
+  // Dzięki temu nigdy nie zablokujemy się na czarnym ekranie.
+  if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white flex-col gap-4">
+    <div className="animate-spin text-4xl">❄️</div>
+    <p>Szukam satelitów...</p>
+    </div>;
 
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
@@ -291,21 +334,18 @@ export default function Home() {
               disabled={isCheckingWater || isUploading}
             />
 
-            {/* --- WYBÓR ZDJĘCIA: APARAT vs GALERIA --- */}
             <div className="mb-6 flex gap-2">
-              {/* Przycisk: APARAT */}
               <label className="flex-1 p-3 bg-blue-100 rounded-xl text-center text-blue-700 font-bold cursor-pointer hover:bg-blue-200 transition-colors flex flex-col items-center justify-center gap-1">
                 <span>📸 Aparat</span>
                 <input 
                   type="file" 
                   accept="image/*" 
-                  capture="environment" // <--- TO OTWIERA APARAT OD RAZU
+                  capture="environment" 
                   className="hidden" 
                   onChange={handleFileSelect} 
                 />
               </label>
               
-              {/* Przycisk: GALERIA */}
               <label className="flex-1 p-3 bg-gray-100 rounded-xl text-center text-gray-700 font-bold cursor-pointer hover:bg-gray-200 transition-colors flex flex-col items-center justify-center gap-1">
                 <span>📁 Galeria</span>
                 <input 
@@ -317,13 +357,11 @@ export default function Home() {
               </label>
             </div>
             
-            {/* Podgląd nazwy pliku */}
             {selectedFile && (
               <div className="mb-4 text-center text-sm text-green-600 font-semibold bg-green-50 py-2 rounded-lg">
                 Wybrano: {selectedFile.name.length > 20 ? selectedFile.name.slice(0, 15) + '...' : selectedFile.name}
               </div>
             )}
-            {/* ------------------------------------------ */}
 
             <div className="flex gap-3 justify-end">
               <button onClick={() => setShowModal(false)} className="flex-1 py-4 text-gray-600 font-bold bg-gray-100 rounded-xl">Anuluj</button>
