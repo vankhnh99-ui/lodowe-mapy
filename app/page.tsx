@@ -171,9 +171,20 @@ export default function Home() {
     }
   };
 
+  // --- POPRAWIONA FUNKCJA LOKALIZACJI ---
   const handleLocateMe = () => {
     if (!mapInstance) return;
     setIsLocating(true);
+
+    // KROK 1: Sprawdź, czy już mamy pozycję w pamięci (niebieska kropka)
+    if (coords) {
+        // Mamy pozycję! Lecimy tam od razu, bez pytania przeglądarki.
+        mapInstance.flyTo(coords, 15, { animate: true, duration: 1.5 });
+        setIsLocating(false);
+        return; // Kończymy funkcję sukcesem
+    }
+
+    // KROK 2: Jeśli jakimś cudem nie mamy pozycji, dopiero wtedy pytamy GPS
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -188,6 +199,7 @@ export default function Home() {
       setIsLocating(false);
     }
   };
+  // ----------------------------------------
 
   const handleMainButtonClick = () => {
     if (!isAiming) {
@@ -292,7 +304,7 @@ export default function Home() {
       { 
         lat: tempLocation.lat, 
         lng: tempLocation.lng, 
-        thickness: parseInt(thickness), // <-- Bez przeliczania, czyste CM
+        thickness: parseInt(thickness), 
         image_url: imageUrl 
       },
     ]);
@@ -325,7 +337,7 @@ export default function Home() {
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       
-      {/* PRZEŁĄCZNIK JĘZYKA - TERAZ PO PRAWEJ STRONIE (right-4) */}
+      {/* PRZEŁĄCZNIK JĘZYKA */}
       <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-lg flex text-xs font-bold border border-gray-200">
         <button onClick={() => setLang('pl')} className={`px-2 py-1 rounded-md transition-all ${lang === 'pl' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>PL</button>
         <button onClick={() => setLang('en')} className={`px-2 py-1 rounded-md transition-all ${lang === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>EN</button>
@@ -394,7 +406,7 @@ export default function Home() {
                 disabled={isCheckingWater || isUploading}
                 className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md disabled:bg-gray-400"
               >
-                {isUploading ? t.modal.uploading : (isCheckingWater ? t.modal.checking : t.modal.save)}
+                {t.modal.uploading || isCheckingWater ? t.modal.checking : t.modal.save}
               </button>
             </div>
           </div>
