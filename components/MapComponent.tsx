@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useState } from 'react';
 
+// --- IKONY ---
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -32,12 +33,55 @@ const dangerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
+// --- KONTROLER MAPY (Przyjmuje instancję) ---
 function MapController({ setMapInstance }: { setMapInstance: any }) {
   const map = useMap();
   useEffect(() => {
     setMapInstance(map);
   }, [map, setMapInstance]);
   return null;
+}
+
+// --- NOWY KOMPONENT: SUWAK ZOOM (Tylko PC) ---
+function ZoomSlider() {
+  const map = useMap();
+  const [zoom, setZoom] = useState(15);
+
+  useEffect(() => {
+    // Słuchamy zmian zoomu (np. jak ktoś użyje kółka myszy), żeby suwak się aktualizował
+    const onZoom = () => setZoom(map.getZoom());
+    map.on('zoom', onZoom);
+    return () => { map.off('zoom', onZoom); };
+  }, [map]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    setZoom(val);
+    map.setZoom(val);
+  };
+
+  return (
+    // hidden md:flex -> Ukryte na mobile, widoczne jako flex na ekranach md (komputery/tablety)
+    <div className="hidden md:flex leaflet-top leaflet-right" style={{ top: '80px', right: '10px', pointerEvents: 'auto' }}>
+      <div className="leaflet-control leaflet-bar bg-white/90 backdrop-blur p-2 rounded-lg shadow-xl border border-gray-300 flex flex-col items-center justify-center gap-2" style={{ height: '200px', width: '40px' }}>
+        <span className="text-gray-500 font-bold text-xs">+</span>
+        
+        {/* Input obrócony o -90 stopni, żeby był pionowy */}
+        <input 
+          type="range" 
+          min={5} 
+          max={19} 
+          step={0.5} 
+          value={zoom} 
+          onChange={handleChange}
+          className="w-[140px] h-[20px] bg-gray-200 rounded-lg appearance-none cursor-pointer outline-none"
+          style={{ transform: 'rotate(-90deg)', margin: '60px 0' }}
+        />
+        
+        <span className="text-gray-500 font-bold text-xs">-</span>
+      </div>
+    </div>
+  );
 }
 
 export default function MapComponent({ coords, measurements, setMapInstance, onDelete, dict }: any) {
@@ -51,12 +95,11 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       maxZoom={22}          
       zoomSnap={0}          
       zoomDelta={0.1}       
-      scrollWheelZoom={true}
+      scrollWheelZoom={true} // Kółko myszy też działa
       touchZoom={true}
       style={{ height: '100%', width: '100%' }}
       className="z-0"
     >
-      {/* WARSTWA 1: ZDJĘCIA SATELITARNE (Spód) */}
       <TileLayer
         attribution='&copy; <a href="https://www.esri.com/">Esri</a>'
         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -64,7 +107,6 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
         maxZoom={22}        
       />
 
-      {/* WARSTWA 2: NAPISY I GRANICE (Góra) */}
       <TileLayer
         url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
         maxNativeZoom={18}
@@ -72,6 +114,9 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       />
       
       <MapController setMapInstance={setMapInstance} />
+      
+      {/* Dodajemy nasz suwak do mapy */}
+      <ZoomSlider />
 
       <Marker position={coords} icon={userIcon} zIndexOffset={1000}>
         <Popup>{dict.youAreHere}</Popup>
