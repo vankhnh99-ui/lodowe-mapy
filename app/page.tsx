@@ -33,7 +33,9 @@ const TRANSLATIONS = {
       browserNoGps: "Twoja przeglądarka nie obsługuje GPS.",
       fbBlock: "⚠️ Facebook blokuje GPS.\n\nKliknij 3 kropki w prawym górnym rogu i wybierz 'Otwórz w przeglądarce' (Chrome/Safari), aby mapa działała poprawnie.",
       fbBlockShort: "⚠️ Facebook blokuje GPS.\nOtwórz mapę w normalnej przeglądarce (Chrome/Safari), aby zapisać dokładną pozycję.",
-      tooFar: "Jesteś za daleko. Musisz być przy miejscu pomiaru.",
+      // NOWE OSTRZEŻENIE O BRAKU GPS
+      gpsRequired: "🚫 BRAK GPS.\nAby dodać pomiar, musimy potwierdzić Twoją lokalizację. Włącz GPS i odśwież stronę, lub otwórz w normalnej przeglądarce.",
+      tooFar: "Jesteś za daleko od wskazanego punktu.",
       landWarning: "Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?",
       photoError: "Błąd zdjęcia:",
       added: "Dodano pomiar!",
@@ -72,7 +74,8 @@ const TRANSLATIONS = {
       browserNoGps: "Your browser does not support GPS.",
       fbBlock: "⚠️ Facebook blocks GPS.\n\nClick the 3 dots in the corner and select 'Open in Browser' (Chrome/Safari) for the map to work.",
       fbBlockShort: "⚠️ Facebook blocks GPS.\nOpen the map in a regular browser (Chrome/Safari) to save accurate location.",
-      tooFar: "You are too far away. You must be at the measuring spot.",
+      gpsRequired: "🚫 NO GPS.\nTo add a measurement, we must verify your location. Turn on GPS and refresh, or open in a regular browser.",
+      tooFar: "You are too far from the selected point.",
       landWarning: "Map says this is land. Are you sure you are on water?",
       photoError: "Photo error:",
       added: "Measurement added!",
@@ -127,22 +130,20 @@ export default function Home() {
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
         (position) => { setCoords([position.coords.latitude, position.coords.longitude]); },
-        (error) => { setCoords((prev) => prev || DEFAULT_CENTER); },
+        (error) => { 
+            // Tutaj tylko logujemy błąd, ale nie ustawiamy coords na siłę.
+            // Dzięki temu coords pozostanie NULL, co zablokuje dodawanie punktów.
+            console.warn("GPS Error:", error); 
+        },
         { enableHighAccuracy: true, timeout: 5000 }
       );
-    } else {
-      setCoords(DEFAULT_CENTER);
-    }
+    } 
 
-    const timer = setTimeout(() => {
-        setCoords((prev) => {
-            if (!prev) return DEFAULT_CENTER;
-            return prev;
-        });
-    }, 2000);
+    // Usunąłem timeout ustawiający DEFAULT_CENTER jako coords. 
+    // Teraz 'coords' będzie ustawione TYLKO jeśli faktycznie mamy GPS.
+    // Mapa wystartuje na DEFAULT_CENTER dzięki logice w komponencie MapComponent, ale 'coords' (pozycja gracza) pozostanie pusta.
 
     fetchMeasurements();
-    return () => clearTimeout(timer);
   }, []); 
 
   const fetchMeasurements = async () => {
@@ -171,23 +172,20 @@ export default function Home() {
     }
   };
 
-  // --- POPRAWIONA FUNKCJA LOKALIZACJI ---
   const handleLocateMe = () => {
     if (!mapInstance) return;
     setIsLocating(true);
 
-    // KROK 1: Sprawdź, czy już mamy pozycję w pamięci (niebieska kropka)
     if (coords) {
-        // Mamy pozycję! Lecimy tam od razu, bez pytania przeglądarki.
         mapInstance.flyTo(coords, 15, { animate: true, duration: 1.5 });
         setIsLocating(false);
-        return; // Kończymy funkcję sukcesem
+        return; 
     }
 
-    // KROK 2: Jeśli jakimś cudem nie mamy pozycji, dopiero wtedy pytamy GPS
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          setCoords([position.coords.latitude, position.coords.longitude]); // Zapisz pozycję jak już ją mamy
           mapInstance.flyTo([position.coords.latitude, position.coords.longitude], 15, { animate: true, duration: 1.5 });
           setIsLocating(false);
         },
@@ -199,7 +197,6 @@ export default function Home() {
       setIsLocating(false);
     }
   };
-  // ----------------------------------------
 
   const handleMainButtonClick = () => {
     if (!isAiming) {
@@ -213,17 +210,32 @@ export default function Home() {
     }
   };
 
+  // --- NOWE SPRAWDZANIE WODY Z TIMEOUTEM (3 sekundy) ---
   const checkIfWater = async (lat: number, lng: number): Promise<boolean> => {
+    // Ustawiamy "stoper" na 3 sekundy
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); 
+
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
+      const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, 
+          { signal: controller.signal } // Przekazujemy sygnał stopera
+      );
       const data = await response.json();
+      
       const waterTypes = ['water', 'natural', 'wetland', 'bay', 'coastline'];
       const waterDetails = ['water', 'wetland', 'bay', 'lake', 'river', 'stream', 'pond'];
       const isCategoryWater = waterTypes.includes(data.category);
       const isTypeWater = waterDetails.includes(data.type);
       const hasLakeInName = data.display_name && (data.display_name.toLowerCase().includes('jezioro') || data.display_name.toLowerCase().includes('zalew') || data.display_name.toLowerCase().includes('staw'));
+      
+      clearTimeout(timeoutId); // Jeśli zdążyliśmy, wyłączamy stoper
       return isCategoryWater || isTypeWater || hasLakeInName;
-    } catch (e) { return true; }
+
+    } catch (e) {
+      // Jeśli błąd lub minął czas (timeout) -> Zakładamy, że jest OK (żeby nie blokować użytkownika)
+      return true; 
+    }
   };
 
   const compressImage = (file: File): Promise<File> => {
@@ -258,16 +270,30 @@ export default function Home() {
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
+    // --- 1. BLOKADA DLA OSÓB BEZ GPS (BARDZO WAŻNE) ---
     if (!coords) {
+         // Próba ostatniej szansy
          if (navigator.geolocation) {
              navigator.geolocation.getCurrentPosition(
-                 (pos) => setCoords([pos.coords.latitude, pos.coords.longitude]),
-                 () => alert(TRANSLATIONS[lang].alerts.fbBlockShort)
+                 (pos) => {
+                     // Jeśli się udało w ostatniej chwili - zapisujemy coords i puszczamy dalej rekurencyjnie
+                     setCoords([pos.coords.latitude, pos.coords.longitude]);
+                     saveMeasurement(); 
+                 },
+                 () => alert(TRANSLATIONS[lang].alerts.gpsRequired) // Blokada!
              );
+             return;
+         } else {
+             alert(TRANSLATIONS[lang].alerts.gpsRequired); // Blokada!
+             return;
          }
-    } else if (mapInstance) {
+    } 
+    
+    // --- 2. SPRAWDZANIE DYSTANSU (Tylko jeśli mamy GPS) ---
+    if (mapInstance && coords) {
         const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
-        if (dist > 100) {
+        // Zwiększyłem limit do 200m dla bezpieczeństwa (błędy GPS)
+        if (dist > 200) {
             alert(`${TRANSLATIONS[lang].alerts.tooFar} (${Math.round(dist)}m).`);
             return;
         }
@@ -275,7 +301,7 @@ export default function Home() {
 
     setIsCheckingWater(true);
     const isWater = await checkIfWater(tempLocation.lat, tempLocation.lng);
-    setIsCheckingWater(false);
+    setIsCheckingWater(false); // <--- OD RAZU WYŁĄCZAMY STATUS "SPRAWDZANIE"
 
     if (!isWater) {
       const forceAdd = window.confirm(TRANSLATIONS[lang].alerts.landWarning);
@@ -329,21 +355,16 @@ export default function Home() {
     return date >= threeDaysAgo;
   });
 
-  if (!coords && !mapInstance) return <div className="flex h-[100dvh] items-center justify-center bg-black text-white flex-col gap-4">
-    <div className="animate-spin text-4xl">❄️</div>
-    <p>{t.searchingSatellites}</p>
-    </div>;
-
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       
-      {/* PRZEŁĄCZNIK JĘZYKA */}
       <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-lg flex text-xs font-bold border border-gray-200">
         <button onClick={() => setLang('pl')} className={`px-2 py-1 rounded-md transition-all ${lang === 'pl' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>PL</button>
         <button onClick={() => setLang('en')} className={`px-2 py-1 rounded-md transition-all ${lang === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>EN</button>
       </div>
 
       <MapComponent 
+        // Tu jest trik: Jak nie mamy coords, centrujemy na domyślne, ale coords jest null.
         coords={coords || DEFAULT_CENTER} 
         measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
@@ -370,6 +391,8 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
             <h2 className="text-xl font-bold mb-4 text-gray-800">{t.modal.title}</h2>
+            
+            {/* Tutaj komunikat "Sprawdzam wodę" pojawia się tylko jeśli trwa to krócej niż 3 sekundy */}
             {isCheckingWater ? <p className="text-blue-600 font-bold mb-4 animate-pulse">{t.modal.checkingWater}</p> : <p className="text-xs text-gray-500 mb-4">{t.modal.checkLocation}</p>}
             
             <input 
@@ -406,7 +429,8 @@ export default function Home() {
                 disabled={isCheckingWater || isUploading}
                 className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md disabled:bg-gray-400"
               >
-                {t.modal.uploading || isCheckingWater ? t.modal.checking : t.modal.save}
+                {/* Priorytety napisów: 1. Wysyłanie fotki, 2. Sprawdzanie wody, 3. ZAPISZ (domyślny) */}
+                {isUploading ? t.modal.uploading : (isCheckingWater ? t.modal.checking : t.modal.save)}
               </button>
             </div>
           </div>
