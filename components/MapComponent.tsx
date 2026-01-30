@@ -33,7 +33,7 @@ const dangerIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-// --- KONTROLER MAPY (Przyjmuje instancję) ---
+// --- KONTROLER MAPY ---
 function MapController({ setMapInstance }: { setMapInstance: any }) {
   const map = useMap();
   useEffect(() => {
@@ -42,13 +42,12 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
   return null;
 }
 
-// --- NOWY KOMPONENT: SUWAK ZOOM (Tylko PC) ---
+// --- SUWAK ZOOM (Tylko PC) ---
 function ZoomSlider() {
   const map = useMap();
   const [zoom, setZoom] = useState(15);
 
   useEffect(() => {
-    // Słuchamy zmian zoomu (np. jak ktoś użyje kółka myszy), żeby suwak się aktualizował
     const onZoom = () => setZoom(map.getZoom());
     map.on('zoom', onZoom);
     return () => { map.off('zoom', onZoom); };
@@ -61,12 +60,13 @@ function ZoomSlider() {
   };
 
   return (
-    // hidden md:flex -> Ukryte na mobile, widoczne jako flex na ekranach md (komputery/tablety)
-    <div className="hidden md:flex leaflet-top leaflet-right" style={{ top: '80px', right: '10px', pointerEvents: 'auto' }}>
+    // ZMIANA: leaflet-left zamiast leaflet-right
+    // ZMIANA: left: '10px' zamiast right: '10px'
+    // top: '80px' zapewnia, że suwak jest POD standardowymi przyciskami +/-
+    <div className="hidden md:flex leaflet-top leaflet-left" style={{ top: '80px', left: '10px', pointerEvents: 'auto' }}>
       <div className="leaflet-control leaflet-bar bg-white/90 backdrop-blur p-2 rounded-lg shadow-xl border border-gray-300 flex flex-col items-center justify-center gap-2" style={{ height: '200px', width: '40px' }}>
         <span className="text-gray-500 font-bold text-xs">+</span>
         
-        {/* Input obrócony o -90 stopni, żeby był pionowy */}
         <input 
           type="range" 
           min={5} 
@@ -95,7 +95,7 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       maxZoom={22}          
       zoomSnap={0}          
       zoomDelta={0.1}       
-      scrollWheelZoom={true} // Kółko myszy też działa
+      scrollWheelZoom={true}
       touchZoom={true}
       style={{ height: '100%', width: '100%' }}
       className="z-0"
@@ -115,7 +115,6 @@ export default function MapComponent({ coords, measurements, setMapInstance, onD
       
       <MapController setMapInstance={setMapInstance} />
       
-      {/* Dodajemy nasz suwak do mapy */}
       <ZoomSlider />
 
       <Marker position={coords} icon={userIcon} zIndexOffset={1000}>
