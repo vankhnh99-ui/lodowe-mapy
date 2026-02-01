@@ -45,7 +45,7 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
 // --- SUWAK ZOOM (Tylko PC) ---
 function ZoomSlider() {
   const map = useMap();
-  const [zoom, setZoom] = useState(map.getZoom()); // Pobieramy aktualny zoom mapy na start
+  const [zoom, setZoom] = useState(map.getZoom());
 
   useEffect(() => {
     const onZoom = () => setZoom(map.getZoom());
@@ -63,7 +63,6 @@ function ZoomSlider() {
     <div className="hidden md:flex leaflet-top leaflet-left" style={{ top: '80px', left: '10px', pointerEvents: 'auto' }}>
       <div className="leaflet-control leaflet-bar bg-white/90 backdrop-blur p-2 rounded-lg shadow-xl border border-gray-300 flex flex-col items-center justify-center gap-2" style={{ height: '200px', width: '40px' }}>
         <span className="text-gray-500 font-bold text-xs">+</span>
-        
         <input 
           type="range" 
           min={5} 
@@ -74,21 +73,71 @@ function ZoomSlider() {
           className="w-[140px] h-[20px] bg-gray-200 rounded-lg appearance-none cursor-pointer outline-none"
           style={{ transform: 'rotate(-90deg)', margin: '60px 0' }}
         />
-        
         <span className="text-gray-500 font-bold text-xs">-</span>
       </div>
     </div>
   );
 }
 
-// Dodajemy prop 'zoom' do komponentu
+// --- NOWY WIDŻET POGODY ---
+function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any }) {
+  const [weather, setWeather] = useState<any>(null);
+
+  useEffect(() => {
+    if (!lat || !lng) return;
+
+    // Pobieramy pogodę z Open-Meteo (darmowe API)
+    fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m&wind_speed_unit=kmh`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.current) {
+          setWeather({
+            temp: Math.round(data.current.temperature_2m),
+            wind: Math.round(data.current.wind_speed_10m),
+            pressure: Math.round(data.current.surface_pressure)
+          });
+        }
+      })
+      .catch(err => console.error("Weather error:", err));
+  }, [lat, lng]);
+
+  if (!weather) return null;
+
+  return (
+    // Umieszczamy w prawym górnym rogu (leaflet-top leaflet-right)
+    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'none', top: '10px', right: '10px' }}>
+      <div className="leaflet-control bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-gray-300 text-xs text-gray-700 flex flex-col gap-1 min-w-[90px]" style={{ pointerEvents: 'auto' }}>
+        
+        {/* TEMPERATURA */}
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-gray-500">🌡️ {dict.temp}</span>
+          <span className="font-bold text-lg text-black">{weather.temp}°C</span>
+        </div>
+
+        {/* WIATR */}
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-gray-500">💨 {dict.wind}</span>
+          <span className="font-bold text-black">{weather.wind} km/h</span>
+        </div>
+
+        {/* CIŚNIENIE */}
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-gray-500">⏲️ {dict.pressure}</span>
+          <span className="font-bold text-black">{weather.pressure} hPa</span>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 export default function MapComponent({ coords, zoom, measurements, setMapInstance, onDelete, dict }: any) {
   const [initialPosition] = useState(coords);
 
   return (
     <MapContainer 
       center={initialPosition} 
-      zoom={zoom}  // <--- TERAZ ZOOM JEST DYNAMICZNY (6 dla Polski, 15 dla GPS)
+      zoom={zoom} 
       minZoom={5}           
       maxZoom={22}          
       zoomSnap={0}          
@@ -114,6 +163,11 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
       <MapController setMapInstance={setMapInstance} />
       
       <ZoomSlider />
+
+      {/* Wyświetlamy pogodę tylko jeśli mamy współrzędne użytkownika */}
+      {coords && dict.weather && (
+        <WeatherWidget lat={coords[0]} lng={coords[1]} dict={dict.weather} />
+      )}
 
       <Marker position={coords} icon={userIcon} zIndexOffset={1000}>
         <Popup>{dict.youAreHere}</Popup>

@@ -42,7 +42,8 @@ const TRANSLATIONS = {
     map: {
       youAreHere: "To Ty (GPS)",
       delete: "Usuń ten pomiar",
-      clickToZoom: "(Kliknij, aby powiększyć)"
+      clickToZoom: "(Kliknij, aby powiększyć)",
+      weather: { temp: "Temp", wind: "Wiatr", pressure: "Ciśn." } // NOWE
     },
     help: {
       title: "Instrukcja & Bezpieczeństwo",
@@ -96,7 +97,8 @@ const TRANSLATIONS = {
     map: {
       youAreHere: "You (GPS)",
       delete: "Delete this point",
-      clickToZoom: "(Click to zoom)"
+      clickToZoom: "(Click to zoom)",
+      weather: { temp: "Temp", wind: "Wind", pressure: "Press." } // NOWE
     },
     help: {
       title: "Instructions & Safety",
