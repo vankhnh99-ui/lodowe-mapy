@@ -33,7 +33,6 @@ const TRANSLATIONS = {
       browserNoGps: "Twoja przeglądarka nie obsługuje GPS.",
       fbBlock: "⚠️ Facebook blokuje GPS.\n\nKliknij 3 kropki w prawym górnym rogu i wybierz 'Otwórz w przeglądarce' (Chrome/Safari), aby mapa działała poprawnie.",
       fbBlockShort: "⚠️ Facebook blokuje GPS.\nOtwórz mapę w normalnej przeglądarce (Chrome/Safari), aby zapisać dokładną pozycję.",
-      // NOWE OSTRZEŻENIE O BRAKU GPS
       gpsRequired: "🚫 BRAK GPS.\nAby dodać pomiar, musimy potwierdzić Twoją lokalizację. Włącz GPS i odśwież stronę, lub otwórz w normalnej przeglądarce.",
       tooFar: "Jesteś za daleko od wskazanego punktu.",
       landWarning: "Mapa twierdzi, że to ląd. Czy na pewno stoisz na wodzie?",
@@ -44,6 +43,21 @@ const TRANSLATIONS = {
       youAreHere: "To Ty (GPS)",
       delete: "Usuń ten pomiar",
       clickToZoom: "(Kliknij, aby powiększyć)"
+    },
+    // NOWA SEKCJA: INSTRUKCJA I OSTRZEŻENIA
+    help: {
+      title: "Instrukcja & Bezpieczeństwo",
+      warningTitle: "⚠️ UWAGA - CZYTAJ UWAŻNIE!",
+      warningText: "Wchodzisz na lód na WŁASNĄ ODPOWIEDZIALNOŚĆ. Dane na mapie są dodawane przez użytkowników i mogą być nieaktualne lub błędne. Lód w jednym miejscu może mieć 15 cm, a metr dalej być cienki. Zawsze sprawdzaj lód pierzchnią!",
+      instructionTitle: "Jak dodać pomiar?",
+      steps: [
+        "Włącz GPS w telefonie (wymagane).",
+        "Bądź fizycznie w miejscu pomiaru.",
+        "Kliknij przycisk '+ DODAJ LÓD'.",
+        "Ustaw celownik w miejscu otworu.",
+        "Wpisz grubość lodu i dodaj zdjęcie (opcjonalnie)."
+      ],
+      close: "Rozumiem, wchodzę"
     }
   },
   en: {
@@ -84,6 +98,20 @@ const TRANSLATIONS = {
       youAreHere: "You (GPS)",
       delete: "Delete this point",
       clickToZoom: "(Click to zoom)"
+    },
+    help: {
+      title: "Instructions & Safety",
+      warningTitle: "⚠️ WARNING - READ CAREFULLY!",
+      warningText: "You enter the ice at your OWN RISK. Data on this map is crowdsourced and may be outdated or incorrect. Ice can be safe in one spot and dangerous just a meter away. Always verify ice thickness yourself!",
+      instructionTitle: "How to add a point?",
+      steps: [
+        "Turn on GPS (required).",
+        "Be physically at the measuring spot.",
+        "Click '+ ADD ICE'.",
+        "Aim exactly at the hole location.",
+        "Enter thickness and add a photo (optional)."
+      ],
+      close: "I understand"
     }
   }
 };
@@ -110,6 +138,10 @@ export default function Home() {
   const [measurements, setMeasurements] = useState<any[]>([]);
   const [isAiming, setIsAiming] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  
+  // NOWY STAN DLA OKIENKA POMOCY
+  const [showHelp, setShowHelp] = useState(false);
+
   const [thickness, setThickness] = useState('');
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null);
   const [mapInstance, setMapInstance] = useState<any>(null);
@@ -130,18 +162,10 @@ export default function Home() {
     if (navigator.geolocation) {
       navigator.geolocation.watchPosition(
         (position) => { setCoords([position.coords.latitude, position.coords.longitude]); },
-        (error) => { 
-            // Tutaj tylko logujemy błąd, ale nie ustawiamy coords na siłę.
-            // Dzięki temu coords pozostanie NULL, co zablokuje dodawanie punktów.
-            console.warn("GPS Error:", error); 
-        },
+        (error) => { console.warn("GPS Error:", error); },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } 
-
-    // Usunąłem timeout ustawiający DEFAULT_CENTER jako coords. 
-    // Teraz 'coords' będzie ustawione TYLKO jeśli faktycznie mamy GPS.
-    // Mapa wystartuje na DEFAULT_CENTER dzięki logice w komponencie MapComponent, ale 'coords' (pozycja gracza) pozostanie pusta.
 
     fetchMeasurements();
   }, []); 
@@ -185,7 +209,7 @@ export default function Home() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setCoords([position.coords.latitude, position.coords.longitude]); // Zapisz pozycję jak już ją mamy
+          setCoords([position.coords.latitude, position.coords.longitude]); 
           mapInstance.flyTo([position.coords.latitude, position.coords.longitude], 15, { animate: true, duration: 1.5 });
           setIsLocating(false);
         },
@@ -210,16 +234,14 @@ export default function Home() {
     }
   };
 
-  // --- NOWE SPRAWDZANIE WODY Z TIMEOUTEM (3 sekundy) ---
   const checkIfWater = async (lat: number, lng: number): Promise<boolean> => {
-    // Ustawiamy "stoper" na 3 sekundy
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000); 
 
     try {
       const response = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, 
-          { signal: controller.signal } // Przekazujemy sygnał stopera
+          { signal: controller.signal } 
       );
       const data = await response.json();
       
@@ -229,11 +251,10 @@ export default function Home() {
       const isTypeWater = waterDetails.includes(data.type);
       const hasLakeInName = data.display_name && (data.display_name.toLowerCase().includes('jezioro') || data.display_name.toLowerCase().includes('zalew') || data.display_name.toLowerCase().includes('staw'));
       
-      clearTimeout(timeoutId); // Jeśli zdążyliśmy, wyłączamy stoper
+      clearTimeout(timeoutId); 
       return isCategoryWater || isTypeWater || hasLakeInName;
 
     } catch (e) {
-      // Jeśli błąd lub minął czas (timeout) -> Zakładamy, że jest OK (żeby nie blokować użytkownika)
       return true; 
     }
   };
@@ -270,29 +291,24 @@ export default function Home() {
   const saveMeasurement = async () => {
     if (!tempLocation || !thickness) return;
 
-    // --- 1. BLOKADA DLA OSÓB BEZ GPS (BARDZO WAŻNE) ---
     if (!coords) {
-         // Próba ostatniej szansy
          if (navigator.geolocation) {
              navigator.geolocation.getCurrentPosition(
                  (pos) => {
-                     // Jeśli się udało w ostatniej chwili - zapisujemy coords i puszczamy dalej rekurencyjnie
                      setCoords([pos.coords.latitude, pos.coords.longitude]);
                      saveMeasurement(); 
                  },
-                 () => alert(TRANSLATIONS[lang].alerts.gpsRequired) // Blokada!
+                 () => alert(TRANSLATIONS[lang].alerts.gpsRequired)
              );
              return;
          } else {
-             alert(TRANSLATIONS[lang].alerts.gpsRequired); // Blokada!
+             alert(TRANSLATIONS[lang].alerts.gpsRequired);
              return;
          }
     } 
     
-    // --- 2. SPRAWDZANIE DYSTANSU (Tylko jeśli mamy GPS) ---
     if (mapInstance && coords) {
         const dist = mapInstance.distance([coords[0], coords[1]], [tempLocation.lat, tempLocation.lng]);
-        // Zwiększyłem limit do 200m dla bezpieczeństwa (błędy GPS)
         if (dist > 200) {
             alert(`${TRANSLATIONS[lang].alerts.tooFar} (${Math.round(dist)}m).`);
             return;
@@ -301,7 +317,7 @@ export default function Home() {
 
     setIsCheckingWater(true);
     const isWater = await checkIfWater(tempLocation.lat, tempLocation.lng);
-    setIsCheckingWater(false); // <--- OD RAZU WYŁĄCZAMY STATUS "SPRAWDZANIE"
+    setIsCheckingWater(false);
 
     if (!isWater) {
       const forceAdd = window.confirm(TRANSLATIONS[lang].alerts.landWarning);
@@ -358,13 +374,21 @@ export default function Home() {
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       
+      {/* PRZEŁĄCZNIK JĘZYKA */}
       <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-lg flex text-xs font-bold border border-gray-200">
         <button onClick={() => setLang('pl')} className={`px-2 py-1 rounded-md transition-all ${lang === 'pl' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>PL</button>
         <button onClick={() => setLang('en')} className={`px-2 py-1 rounded-md transition-all ${lang === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>EN</button>
       </div>
 
+      {/* NOWY PRZYCISK: INSTRUKCJA (?) - Ustawiony pod przełącznikiem języka (top-16) */}
+      <button 
+        onClick={() => setShowHelp(true)}
+        className="absolute top-16 right-4 z-[1000] bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg shadow-lg flex items-center justify-center text-gray-700 font-bold border border-gray-200 hover:bg-gray-100"
+      >
+        ?
+      </button>
+
       <MapComponent 
-        // Tu jest trik: Jak nie mamy coords, centrujemy na domyślne, ale coords jest null.
         coords={coords || DEFAULT_CENTER} 
         measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
@@ -387,12 +411,41 @@ export default function Home() {
         </div>
       )}
 
+      {/* NOWY MODAL POMOCY */}
+      {showHelp && (
+        <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4 text-gray-800">{t.help.title}</h2>
+            
+            {/* OSTRZEŻENIE */}
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
+                <p className="font-bold text-red-700 text-sm mb-1">{t.help.warningTitle}</p>
+                <p className="text-red-600 text-xs leading-relaxed">{t.help.warningText}</p>
+            </div>
+
+            {/* INSTRUKCJA */}
+            <h3 className="font-bold text-gray-700 mb-2">{t.help.instructionTitle}</h3>
+            <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2 mb-6">
+                {t.help.steps.map((step, index) => (
+                    <li key={index}>{step}</li>
+                ))}
+            </ol>
+
+            <button 
+              onClick={() => setShowHelp(false)}
+              className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md"
+            >
+              {t.help.close}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200">
             <h2 className="text-xl font-bold mb-4 text-gray-800">{t.modal.title}</h2>
             
-            {/* Tutaj komunikat "Sprawdzam wodę" pojawia się tylko jeśli trwa to krócej niż 3 sekundy */}
             {isCheckingWater ? <p className="text-blue-600 font-bold mb-4 animate-pulse">{t.modal.checkingWater}</p> : <p className="text-xs text-gray-500 mb-4">{t.modal.checkLocation}</p>}
             
             <input 
@@ -429,7 +482,6 @@ export default function Home() {
                 disabled={isCheckingWater || isUploading}
                 className="flex-1 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md disabled:bg-gray-400"
               >
-                {/* Priorytety napisów: 1. Wysyłanie fotki, 2. Sprawdzanie wody, 3. ZAPISZ (domyślny) */}
                 {isUploading ? t.modal.uploading : (isCheckingWater ? t.modal.checking : t.modal.save)}
               </button>
             </div>
@@ -437,7 +489,7 @@ export default function Home() {
         </div>
       )}
 
-      {!showModal && (
+      {!showModal && !showHelp && (
         <button onClick={handleLocateMe} className="absolute bottom-36 right-6 z-[1000] bg-white p-4 rounded-full shadow-xl text-gray-700 active:scale-90">
           {isLocating ? <span className="animate-spin block font-bold">↻</span> : (
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
@@ -445,7 +497,7 @@ export default function Home() {
         </button>
       )}
 
-      {!showModal && (
+      {!showModal && !showHelp && (
         <button
           onClick={handleMainButtonClick}
           className={`absolute bottom-12 right-6 z-[1000] rounded-2xl px-6 py-4 shadow-xl text-white font-bold text-lg tracking-wide active:scale-95 ${isAiming ? 'bg-green-600' : 'bg-blue-600'}`}
