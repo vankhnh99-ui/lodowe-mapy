@@ -44,7 +44,6 @@ const TRANSLATIONS = {
       delete: "Usuń ten pomiar",
       clickToZoom: "(Kliknij, aby powiększyć)"
     },
-    // NOWA SEKCJA: INSTRUKCJA I OSTRZEŻENIA
     help: {
       title: "Instrukcja & Bezpieczeństwo",
       warningTitle: "⚠️ UWAGA - CZYTAJ UWAŻNIE!",
@@ -128,7 +127,8 @@ const MapComponent = dynamic(() => import('../components/MapComponent'), {
   loading: () => <div className="flex h-[100dvh] items-center justify-center text-white bg-gray-900">...</div>
 });
 
-const DEFAULT_CENTER = [53.757, 21.735] as [number, number];
+// ZMIANA: Współrzędne środka Polski zamiast Śniardw
+const DEFAULT_CENTER = [52.0693, 19.4803] as [number, number];
 
 export default function Home() {
   const [lang, setLang] = useState<Lang>('pl'); 
@@ -139,7 +139,6 @@ export default function Home() {
   const [isAiming, setIsAiming] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
-  // NOWY STAN DLA OKIENKA POMOCY
   const [showHelp, setShowHelp] = useState(false);
 
   const [thickness, setThickness] = useState('');
@@ -374,13 +373,11 @@ export default function Home() {
   return (
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden">
       
-      {/* PRZEŁĄCZNIK JĘZYKA */}
       <div className="absolute top-4 right-4 z-[1000] bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-lg flex text-xs font-bold border border-gray-200">
         <button onClick={() => setLang('pl')} className={`px-2 py-1 rounded-md transition-all ${lang === 'pl' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>PL</button>
         <button onClick={() => setLang('en')} className={`px-2 py-1 rounded-md transition-all ${lang === 'en' ? 'bg-blue-600 text-white' : 'text-gray-600'}`}>EN</button>
       </div>
 
-      {/* NOWY PRZYCISK: INSTRUKCJA (?) - Ustawiony pod przełącznikiem języka (top-16) */}
       <button 
         onClick={() => setShowHelp(true)}
         className="absolute top-16 right-4 z-[1000] bg-white/90 backdrop-blur-sm w-8 h-8 rounded-lg shadow-lg flex items-center justify-center text-gray-700 font-bold border border-gray-200 hover:bg-gray-100"
@@ -390,6 +387,10 @@ export default function Home() {
 
       <MapComponent 
         coords={coords || DEFAULT_CENTER} 
+        // ZMIANA: Dynamiczny zoom
+        // Jeśli mamy GPS (coords istnieje) -> Zoom 15 (blisko)
+        // Jeśli nie mamy GPS -> Zoom 6 (widok Polski)
+        zoom={coords ? 15 : 6}
         measurements={filteredMeasurements} 
         setMapInstance={setMapInstance}
         onDelete={handleDelete}
@@ -411,19 +412,16 @@ export default function Home() {
         </div>
       )}
 
-      {/* NOWY MODAL POMOCY */}
       {showHelp && (
         <div className="absolute inset-0 bg-black/80 z-[2000] flex items-center justify-center backdrop-blur-sm p-4">
           <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4 text-gray-800">{t.help.title}</h2>
             
-            {/* OSTRZEŻENIE */}
             <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
                 <p className="font-bold text-red-700 text-sm mb-1">{t.help.warningTitle}</p>
                 <p className="text-red-600 text-xs leading-relaxed">{t.help.warningText}</p>
             </div>
 
-            {/* INSTRUKCJA */}
             <h3 className="font-bold text-gray-700 mb-2">{t.help.instructionTitle}</h3>
             <ol className="list-decimal list-inside text-sm text-gray-600 space-y-2 mb-6">
                 {t.help.steps.map((step, index) => (

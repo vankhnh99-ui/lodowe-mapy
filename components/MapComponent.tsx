@@ -45,7 +45,7 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
 // --- SUWAK ZOOM (Tylko PC) ---
 function ZoomSlider() {
   const map = useMap();
-  const [zoom, setZoom] = useState(15);
+  const [zoom, setZoom] = useState(map.getZoom()); // Pobieramy aktualny zoom mapy na start
 
   useEffect(() => {
     const onZoom = () => setZoom(map.getZoom());
@@ -60,9 +60,6 @@ function ZoomSlider() {
   };
 
   return (
-    // ZMIANA: leaflet-left zamiast leaflet-right
-    // ZMIANA: left: '10px' zamiast right: '10px'
-    // top: '80px' zapewnia, że suwak jest POD standardowymi przyciskami +/-
     <div className="hidden md:flex leaflet-top leaflet-left" style={{ top: '80px', left: '10px', pointerEvents: 'auto' }}>
       <div className="leaflet-control leaflet-bar bg-white/90 backdrop-blur p-2 rounded-lg shadow-xl border border-gray-300 flex flex-col items-center justify-center gap-2" style={{ height: '200px', width: '40px' }}>
         <span className="text-gray-500 font-bold text-xs">+</span>
@@ -84,13 +81,14 @@ function ZoomSlider() {
   );
 }
 
-export default function MapComponent({ coords, measurements, setMapInstance, onDelete, dict }: any) {
+// Dodajemy prop 'zoom' do komponentu
+export default function MapComponent({ coords, zoom, measurements, setMapInstance, onDelete, dict }: any) {
   const [initialPosition] = useState(coords);
 
   return (
     <MapContainer 
       center={initialPosition} 
-      zoom={15}             
+      zoom={zoom}  // <--- TERAZ ZOOM JEST DYNAMICZNY (6 dla Polski, 15 dla GPS)
       minZoom={5}           
       maxZoom={22}          
       zoomSnap={0}          
