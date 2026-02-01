@@ -79,14 +79,13 @@ function ZoomSlider() {
   );
 }
 
-// --- NOWY WIDŻET POGODY ---
+// --- WIDŻET POGODY (POPRAWIONA POZYCJA) ---
 function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any }) {
   const [weather, setWeather] = useState<any>(null);
 
   useEffect(() => {
     if (!lat || !lng) return;
 
-    // Pobieramy pogodę z Open-Meteo (darmowe API)
     fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,surface_pressure,wind_speed_10m&wind_speed_unit=kmh`)
       .then(res => res.json())
       .then(data => {
@@ -104,24 +103,25 @@ function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any
   if (!weather) return null;
 
   return (
-    // Umieszczamy w prawym górnym rogu (leaflet-top leaflet-right)
-    <div className="leaflet-top leaflet-right" style={{ pointerEvents: 'none', top: '10px', right: '10px' }}>
-      <div className="leaflet-control bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-gray-300 text-xs text-gray-700 flex flex-col gap-1 min-w-[90px]" style={{ pointerEvents: 'auto' }}>
+    // ZMIANA: Zamiast 'leaflet-top', używamy 'absolute top-28' (czyli 112px od góry).
+    // To umieści widget idealnie pod przyciskiem ze znakiem zapytania (który jest na top-16).
+    <div className="absolute top-28 right-4 z-[500]" style={{ pointerEvents: 'none' }}>
+      <div className="bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-gray-200 text-xs text-gray-700 flex flex-col gap-1 min-w-[90px]" style={{ pointerEvents: 'auto' }}>
         
         {/* TEMPERATURA */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">🌡️ {dict.temp}</span>
           <span className="font-bold text-lg text-black">{weather.temp}°C</span>
         </div>
 
         {/* WIATR */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">💨 {dict.wind}</span>
           <span className="font-bold text-black">{weather.wind} km/h</span>
         </div>
 
         {/* CIŚNIENIE */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">⏲️ {dict.pressure}</span>
           <span className="font-bold text-black">{weather.pressure} hPa</span>
         </div>
@@ -164,7 +164,6 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
       
       <ZoomSlider />
 
-      {/* Wyświetlamy pogodę tylko jeśli mamy współrzędne użytkownika */}
       {coords && dict.weather && (
         <WeatherWidget lat={coords[0]} lng={coords[1]} dict={dict.weather} />
       )}
