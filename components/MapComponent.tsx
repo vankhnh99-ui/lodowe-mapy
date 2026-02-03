@@ -132,10 +132,8 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
   const [initialPosition] = useState(coords);
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // Lokalny stan pomiarów, żebyśmy mogli go aktualizować bez odświeżania strony
   const [localMeasurements, setLocalMeasurements] = useState(measurements);
 
-  // Synchronizacja, gdy przyjdą nowe dane z zewnątrz (z page.tsx)
   useEffect(() => {
     setLocalMeasurements(measurements);
   }, [measurements]);
@@ -148,14 +146,15 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
   }, []);
 
   const handleMarkerClick = async (id: number) => {
-    // 1. Najpierw aktualizujemy licznik wizualnie dla Ciebie (Optymistyczna aktualizacja UI)
+    // BLOKADA: Jeśli to admin (szef), nie rób nic z licznikiem!
+    if (isAdmin) return;
+
     setLocalMeasurements((prev: any[]) => 
       prev.map((m) => 
         m.id === id ? { ...m, views: (m.views || 0) + 1 } : m
       )
     );
 
-    // 2. Potem wysyłamy sygnał do bazy w tle
     await supabase.rpc('increment_views', { row_id: id });
   };
 
@@ -210,7 +209,7 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
           <Popup>
             <div className="text-center min-w-[150px]">
               
-              {/* --- TAJNY LICZNIK --- */}
+              {/* ADMIN WIDZI LICZNIK, ALE GO NIE POBIJA */}
               {isAdmin && (
                 <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold py-1 px-2 rounded mb-2 border border-yellow-300 inline-block">
                   👁️ Wyświetleń: {m.views || 0}
