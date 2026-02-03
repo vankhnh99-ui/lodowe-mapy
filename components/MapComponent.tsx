@@ -6,13 +6,12 @@ import L from 'leaflet';
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-// Klient Supabase potrzebny tutaj do zliczania kliknięć
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// --- IKONY (bez zmian) ---
+// --- IKONY ---
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -132,8 +131,15 @@ function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any
 export default function MapComponent({ coords, zoom, measurements, setMapInstance, onDelete, dict }: any) {
   const [initialPosition] = useState(coords);
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Lokalny stan pomiarów, żebyśmy mogli go aktualizować bez odświeżania strony
+  const [localMeasurements, setLocalMeasurements] = useState(measurements);
 
-  // Sprawdzamy czy w linku jest ?admin=szef
+  // Synchronizacja, gdy przyjdą nowe dane z zewnątrz (z page.tsx)
+  useEffect(() => {
+    setLocalMeasurements(measurements);
+  }, [measurements]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('admin') === 'szef') {
@@ -141,9 +147,15 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
     }
   }, []);
 
-  // Funkcja wysyłająca +1 do bazy
   const handleMarkerClick = async (id: number) => {
-    // Wywołujemy naszą funkcję SQL 'increment_views'
+    // 1. Najpierw aktualizujemy licznik wizualnie dla Ciebie (Optymistyczna aktualizacja UI)
+    setLocalMeasurements((prev: any[]) => 
+      prev.map((m) => 
+        m.id === id ? { ...m, views: (m.views || 0) + 1 } : m
+      )
+    );
+
+    // 2. Potem wysyłamy sygnał do bazy w tle
     await supabase.rpc('increment_views', { row_id: id });
   };
 
@@ -184,7 +196,7 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
         <Popup>{dict.youAreHere}</Popup>
       </Marker>
 
-      {measurements.map((m: any) => (
+      {localMeasurements.map((m: any) => (
         <Marker 
           key={m.id} 
           position={[m.lat, m.lng]} 
@@ -198,7 +210,7 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
           <Popup>
             <div className="text-center min-w-[150px]">
               
-              {/* --- TAJNY LICZNIK DLA ADMINA --- */}
+              {/* --- TAJNY LICZNIK --- */}
               {isAdmin && (
                 <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold py-1 px-2 rounded mb-2 border border-yellow-300 inline-block">
                   👁️ Wyświetleń: {m.views || 0}
