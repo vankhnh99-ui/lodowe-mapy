@@ -4,8 +4,15 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-// --- IKONY ---
+// Klient Supabase potrzebny tutaj do zliczania kliknięć
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// --- IKONY (bez zmian) ---
 const userIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -42,7 +49,7 @@ function MapController({ setMapInstance }: { setMapInstance: any }) {
   return null;
 }
 
-// --- SUWAK ZOOM (Tylko PC) ---
+// --- SUWAK ZOOM ---
 function ZoomSlider() {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
@@ -79,7 +86,7 @@ function ZoomSlider() {
   );
 }
 
-// --- WIDŻET POGODY (POPRAWIONA POZYCJA) ---
+// --- WIDŻET POGODY ---
 function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any }) {
   const [weather, setWeather] = useState<any>(null);
 
@@ -103,29 +110,20 @@ function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any
   if (!weather) return null;
 
   return (
-    // ZMIANA: Zamiast 'leaflet-top', używamy 'absolute top-28' (czyli 112px od góry).
-    // To umieści widget idealnie pod przyciskiem ze znakiem zapytania (który jest na top-16).
     <div className="absolute top-28 right-4 z-[500]" style={{ pointerEvents: 'none' }}>
       <div className="bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-lg border border-gray-200 text-xs text-gray-700 flex flex-col gap-1 min-w-[90px]" style={{ pointerEvents: 'auto' }}>
-        
-        {/* TEMPERATURA */}
         <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">🌡️ {dict.temp}</span>
           <span className="font-bold text-lg text-black">{weather.temp}°C</span>
         </div>
-
-        {/* WIATR */}
         <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">💨 {dict.wind}</span>
           <span className="font-bold text-black">{weather.wind} km/h</span>
         </div>
-
-        {/* CIŚNIENIE */}
         <div className="flex items-center justify-between gap-2">
           <span className="font-bold text-gray-500">⏲️ {dict.pressure}</span>
           <span className="font-bold text-black">{weather.pressure} hPa</span>
         </div>
-
       </div>
     </div>
   );
@@ -133,6 +131,21 @@ function WeatherWidget({ lat, lng, dict }: { lat: number, lng: number, dict: any
 
 export default function MapComponent({ coords, zoom, measurements, setMapInstance, onDelete, dict }: any) {
   const [initialPosition] = useState(coords);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Sprawdzamy czy w linku jest ?admin=szef
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === 'szef') {
+      setIsAdmin(true);
+    }
+  }, []);
+
+  // Funkcja wysyłająca +1 do bazy
+  const handleMarkerClick = async (id: number) => {
+    // Wywołujemy naszą funkcję SQL 'increment_views'
+    await supabase.rpc('increment_views', { row_id: id });
+  };
 
   return (
     <MapContainer 
@@ -161,7 +174,6 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
       />
       
       <MapController setMapInstance={setMapInstance} />
-      
       <ZoomSlider />
 
       {coords && dict.weather && (
@@ -177,9 +189,22 @@ export default function MapComponent({ coords, zoom, measurements, setMapInstanc
           key={m.id} 
           position={[m.lat, m.lng]} 
           icon={m.thickness >= 15 ? safeIcon : dangerIcon}
+          eventHandlers={{
+            click: () => {
+              handleMarkerClick(m.id);
+            },
+          }}
         >
           <Popup>
             <div className="text-center min-w-[150px]">
+              
+              {/* --- TAJNY LICZNIK DLA ADMINA --- */}
+              {isAdmin && (
+                <div className="bg-yellow-100 text-yellow-800 text-[10px] font-bold py-1 px-2 rounded mb-2 border border-yellow-300 inline-block">
+                  👁️ Wyświetleń: {m.views || 0}
+                </div>
+              )}
+
               <div className="text-lg font-bold mb-1">
                 {m.thickness} cm
               </div>
